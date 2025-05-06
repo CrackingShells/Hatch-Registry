@@ -173,6 +173,63 @@ class RegistryUpdater:
                     return ver
         return None
     
+    def _compute_generic_diff(self, old_items: List[Dict[str, Any]], 
+                             new_items: List[Dict[str, Any]],
+                             key_field: str = "name",
+                             diff_fields: List[str] = None) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
+        """
+        Generic method to compute differences between lists of dictionaries.
+        
+        Args:
+            old_items: List of old items (dictionaries)
+            new_items: List of new items (dictionaries)
+            key_field: The dictionary key to use for identifying items
+            diff_fields: List of fields to check for differences
+            
+        Returns:
+            Tuple of (added_items, removed_items, modified_items)
+        """
+        if diff_fields is None:
+            diff_fields = []
+            
+        # Create dictionaries for comparison
+        old_dict = {item[key_field]: item for item in old_items}
+        new_dict = {item[key_field]: item for item in new_items}
+        
+        # Find added items
+        added_keys = set(new_dict.keys()) - set(old_dict.keys())
+        added = [new_dict[key] for key in added_keys]
+        
+        # Find removed items
+        removed_keys = set(old_dict.keys()) - set(new_dict.keys())
+        removed = list(removed_keys)
+        
+        # Find modified items
+        modified = []
+        for key in set(old_dict.keys()) & set(new_dict.keys()):
+            old_item = old_dict[key]
+            new_item = new_dict[key]
+            
+            # Check if any fields are different
+            is_modified = False
+            if diff_fields:
+                for field in diff_fields:
+                    if field in old_item and field in new_item:
+                        if old_item[field] != new_item[field]:
+                            is_modified = True
+                            break
+                    elif field in old_item or field in new_item:
+                        is_modified = True
+                        break
+            else:
+                # If no fields specified, compare entire dictionaries
+                is_modified = old_item != new_item
+                
+            if is_modified:
+                modified.append(new_item)
+                
+        return added, removed, modified
+    
     def compute_dependency_diff(self, old_deps: List[Dict[str, str]], 
                               new_deps: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], List[str], List[Dict[str, str]]]:
         """
@@ -185,25 +242,7 @@ class RegistryUpdater:
         Returns:
             Tuple of (added_deps, removed_deps, modified_deps)
         """
-        # Convert to dictionaries for easier comparison
-        old_dict = {d["name"]: d.get("version_constraint", "") for d in old_deps}
-        new_dict = {d["name"]: d.get("version_constraint", "") for d in new_deps}
-        
-        # Find added dependencies
-        added_names = set(new_dict.keys()) - set(old_dict.keys())
-        added = [{"name": name, "version_constraint": new_dict[name]} for name in added_names]
-        
-        # Find removed dependencies
-        removed_names = set(old_dict.keys()) - set(new_dict.keys())
-        removed = list(removed_names)
-        
-        # Find modified dependencies
-        modified = []
-        for name in set(old_dict.keys()) & set(new_dict.keys()):
-            if old_dict[name] != new_dict[name]:
-                modified.append({"name": name, "version_constraint": new_dict[name]})
-                
-        return added, removed, modified
+        return self._compute_generic_diff(old_deps, new_deps, key_field="name", diff_fields=["version_constraint"])
     
     def compute_python_dependency_diff(self, old_deps: List[Dict[str, Any]], 
                                      new_deps: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
@@ -217,39 +256,8 @@ class RegistryUpdater:
         Returns:
             Tuple of (added_deps, removed_deps, modified_deps)
         """
-        # Convert to dictionaries for easier comparison
-        old_dict = {d["name"]: (d.get("version_constraint", ""), d.get("package_manager", "pip")) for d in old_deps}
-        new_dict = {d["name"]: (d.get("version_constraint", ""), d.get("package_manager", "pip")) for d in new_deps}
-        
-        # Find added dependencies
-        added_names = set(new_dict.keys()) - set(old_dict.keys())
-        added = []
-        for name in added_names:
-            constraint, pm = new_dict[name]
-            added.append({
-                "name": name,
-                "version_constraint": constraint,
-                "package_manager": pm
-            })
-        
-        # Find removed dependencies
-        removed_names = set(old_dict.keys()) - set(new_dict.keys())
-        removed = list(removed_names)
-        
-        # Find modified dependencies
-        modified = []
-        for name in set(old_dict.keys()) & set(new_dict.keys()):
-            old_constraint, old_pm = old_dict[name]
-            new_constraint, new_pm = new_dict[name]
-            
-            if old_constraint != new_constraint or old_pm != new_pm:
-                modified.append({
-                    "name": name,
-                    "version_constraint": new_constraint,
-                    "package_manager": new_pm
-                })
-                
-        return added, removed, modified
+        return self._compute_generic_diff(old_deps, new_deps, key_field="name", 
+                                        diff_fields=["version_constraint", "package_manager"])
     
     def compute_compatibility_diff(self, old_compat: Dict[str, str], 
                                  new_compat: Dict[str, str]) -> Dict[str, str]:
@@ -291,57 +299,15 @@ class RegistryUpdater:
             self.logger.error(f"Repository {repo_name} not found")
             return False
         
-        # Validate the package - disallow local dependencies for registry packages
-        validator = HatchPackageValidator(allow_local_dependencies=False)
-        is_valid, results = validator.validate_package(package_dir)
+        is_valid, results, metadata = self._validate_package(package_dir)
         
         if not is_valid:
-            # Log validation errors
-            self.logger.error(f"Package validation failed")
-            if not results['metadata_schema']['valid']:
-                for error in results['metadata_schema']['errors']:
-                    self.logger.error(f"  Metadata schema error: {error}")
-            if not results['entry_point']['valid']:
-                for error in results['entry_point']['errors']:
-                    self.logger.error(f"  Entry point error: {error}")
-            if not results['dependencies']['valid']:
-                for error in results['dependencies']['errors']:
-                    self.logger.error(f"  Dependency error: {error}")
-            if not results['tools']['valid']:
-                for error in results['tools']['errors']:
-                    self.logger.error(f"  Tool validation error: {error}")
             return False
             
-        # Load the metadata
-        metadata = results['metadata']
-        
-        # Check for circular dependencies
-        try:
-            # Create a dependency resolver that uses our registry
-            resolver = DependencyResolver(registry_path=self.registry_path)
-            
-            # Check for circular dependencies
-            has_circular, cycle = resolver.check_circular_dependencies(
-                metadata.get("name", "unknown"), 
-                metadata.get("version", "0.0.0")
-            )
-            
-            if has_circular:
-                self.logger.error(f"Circular dependency detected: {' -> '.join(cycle)}")
-                return False
-                
-        except Exception as e:
-            self.logger.error(f"Error checking for circular dependencies: {e}")
-            return False
-        
         # Extract required metadata fields
         package_name = metadata.get("name")
         version = metadata.get("version")
         
-        if not package_name or not version:
-            self.logger.error(f"Missing required metadata fields (name, version)")
-            return False
-            
         # Check if package already exists
         existing_pkg = self.find_package(repo_name, package_name)
         if existing_pkg:
@@ -403,9 +369,74 @@ class RegistryUpdater:
         if self.find_version(repo_name, package_name, version):
             self.logger.warning(f"Version {version} of package {package_name} already exists")
             return False
+            
+        # Perform additional validation on the package version
+        package_dir = Path(package_path)
+        if not package_dir.exists() or not package_dir.is_dir():
+            self.logger.error(f"Package directory does not exist: {package_path}")
+            return False
+            
+        is_valid, results, metadata = self._validate_package(package_dir)
         
-        # Determine base version and compute diffs
-        base_version = None
+        if not is_valid:
+            return False
+        
+        # Verify that the version in metadata matches the version provided
+        if metadata.get("version") != version:
+            self.logger.error(f"Version mismatch: {metadata.get('version')} in metadata vs {version} provided")
+            return False
+            
+        # Check for circular dependencies when updating the registry
+        if not self._check_circular_dependencies(package_name, version):
+            return False
+
+        # Prepare version data
+        version_data = self._prepare_version_data(repo_name, package_name, metadata, package_path, metadata_path, is_first_version)
+        
+        # Add the version to the package
+        pkg["versions"].append(version_data)
+        
+        # Update latest version
+        pkg["latest_version"] = version
+        
+        # Update stats
+        self.registry_data["stats"]["total_versions"] += 1
+        self.registry_data["stats"]["total_artifacts"] += len(version_data["artifacts"])
+        
+        self._save_registry()
+        self.logger.info(f"Added version {version} to package {package_name}")
+        
+        return True
+    
+    def _prepare_version_data(self, repo_name: str, package_name: str, metadata: dict,
+                           package_path: str, metadata_path: str, is_first_version: bool) -> Dict[str, Any]:
+        """
+        Prepare version data for storage in the registry.
+        
+        Args:
+            repo_name: Repository name
+            package_name: Package name
+            metadata: Package metadata
+            package_path: Path to the package
+            metadata_path: Path to metadata file
+            is_first_version: Whether this is the first version of the package
+            
+        Returns:
+            Dictionary containing version data
+        """
+        # Initialize with base metadata that's the same for all versions
+        version = metadata.get("version")
+        artifacts = []  # TODO: Add actual artifacts
+        
+        version_data = {
+            "version": version,
+            "path": package_path,
+            "metadata_path": metadata_path,
+            "artifacts": artifacts,
+            "added_date": datetime.datetime.now().isoformat()
+        }
+        
+        # Get dependencies for the package
         dependencies_added = metadata.get("dependencies", [])
         dependencies_removed = []
         dependencies_modified = []
@@ -415,54 +446,49 @@ class RegistryUpdater:
         python_dependencies_modified = []
         
         compatibility_changes = metadata.get("compatibility", {})
+        base_version = None
         
-        if not is_first_version and pkg["versions"]:
-            # Use the latest version as base for the diff
-            base_version = pkg["latest_version"]
-            base_version_data = self.find_version(repo_name, package_name, base_version)
-            
-            if base_version_data:
-                # Load the full base version metadata to compute diffs
-                base_metadata_path = os.path.join(base_version_data["path"], base_version_data["metadata_path"])
+        # For differential storage, compute changes from base version
+        if not is_first_version:
+            pkg = self.find_package(repo_name, package_name)
+            if pkg and pkg.get("versions"):
+                base_version = pkg["latest_version"]
+                base_version_data = self.find_version(repo_name, package_name, base_version)
                 
-                try:
-                    with open(base_metadata_path, 'r') as f:
-                        base_metadata = json.load(f)
+                if base_version_data:
+                    # Load the full base version metadata to compute diffs
+                    base_metadata_path = os.path.join(base_version_data["path"], base_version_data["metadata_path"])
+                    
+                    try:
+                        with open(base_metadata_path, 'r') as f:
+                            base_metadata = json.load(f)
+                            
+                        # Compute diffs for dependencies
+                        dependencies_added, dependencies_removed, dependencies_modified = self.compute_dependency_diff(
+                            base_metadata.get("dependencies", []),
+                            metadata.get("dependencies", [])
+                        )
                         
-                    # Compute diffs for dependencies
-                    dependencies_added, dependencies_removed, dependencies_modified = self.compute_dependency_diff(
-                        base_metadata.get("dependencies", []),
-                        metadata.get("dependencies", [])
-                    )
-                    
-                    # Compute diffs for Python dependencies
-                    python_dependencies_added, python_dependencies_removed, python_dependencies_modified = self.compute_python_dependency_diff(
-                        base_metadata.get("python_dependencies", []),
-                        metadata.get("python_dependencies", [])
-                    )
-                    
-                    # Compute diffs for compatibility
-                    compatibility_changes = self.compute_compatibility_diff(
-                        base_metadata.get("compatibility", {}),
-                        metadata.get("compatibility", {})
-                    )
-                    
-                except Exception as e:
-                    self.logger.error(f"Error computing diffs: {e}")
-                    # Fall back to non-differential storage
-                    is_first_version = True
+                        # Compute diffs for Python dependencies
+                        python_dependencies_added, python_dependencies_removed, python_dependencies_modified = self.compute_python_dependency_diff(
+                            base_metadata.get("python_dependencies", []),
+                            metadata.get("python_dependencies", [])
+                        )
+                        
+                        # Compute diffs for compatibility
+                        compatibility_changes = self.compute_compatibility_diff(
+                            base_metadata.get("compatibility", {}),
+                            metadata.get("compatibility", {})
+                        )
+                        
+                    except Exception as e:
+                        self.logger.error(f"Error computing diffs: {e}")
+                        # Fall back to non-differential storage
+                        is_first_version = True
         
-        # Create the version entry
-        artifacts = []  # TODO: Add actual artifacts
-        
-        version_data = {
-            "version": version,
-            "path": package_path,
-            "metadata_path": metadata_path,
-            "base_version": base_version,
-            "artifacts": artifacts,
-            "added_date": datetime.datetime.now().isoformat()
-        }
+        # Add the base version reference
+        if base_version:
+            version_data["base_version"] = base_version
         
         # Add differential data if not the first version
         if not is_first_version:
@@ -487,21 +513,8 @@ class RegistryUpdater:
             version_data["dependencies_added"] = metadata.get("dependencies", [])
             version_data["python_dependencies_added"] = metadata.get("python_dependencies", [])
             version_data["compatibility_changes"] = metadata.get("compatibility", {})
-            
-        # Add the version to the package
-        pkg["versions"].append(version_data)
         
-        # Update latest version
-        pkg["latest_version"] = version
-        
-        # Update stats
-        self.registry_data["stats"]["total_versions"] += 1
-        self.registry_data["stats"]["total_artifacts"] += len(artifacts)
-        
-        self._save_registry()
-        self.logger.info(f"Added version {version} to package {package_name}")
-        
-        return True
+        return version_data
     
     def update_repository_timestamp(self, repo_name: str) -> bool:
         """
@@ -519,6 +532,86 @@ class RegistryUpdater:
             self._save_registry()
             return True
         return False
+    
+    def _validate_package(self, package_dir: Path) -> Tuple[bool, Optional[dict], Optional[dict]]:
+        """
+        Validate a package against schemas and check for circular dependencies.
+        
+        Args:
+            package_dir: Path to the package directory
+            
+        Returns:
+            Tuple of (is_valid, validation_results, metadata)
+        """
+        # Validate the package - disallow local dependencies for registry packages
+        validator = HatchPackageValidator(allow_local_dependencies=False)
+        is_valid, results = validator.validate_package(package_dir)
+        
+        if not is_valid:
+            # Log validation errors
+            self._log_validation_errors(results, "Package validation failed")
+            return False, results, None
+            
+        # Load the metadata
+        metadata = results['metadata']
+        
+        # Extract required metadata fields
+        package_name = metadata.get("name")
+        version = metadata.get("version")
+        
+        if not package_name or not version:
+            self.logger.error(f"Missing required metadata fields (name, version)")
+            return False, results, None
+            
+        # Check for circular dependencies
+        if not self._check_circular_dependencies(package_name, version):
+            return False, results, None
+                
+        return True, results, metadata
+    
+    def _check_circular_dependencies(self, package_name: str, version: str) -> bool:
+        """
+        Check for circular dependencies in a package.
+        
+        Args:
+            package_name: Name of the package
+            version: Version of the package
+            
+        Returns:
+            bool: True if no circular dependencies found
+        """
+        try:
+            # Create a dependency resolver that uses our registry
+            resolver = DependencyResolver(registry_path=self.registry_path)
+            
+            # Check for circular dependencies
+            has_circular, cycle = resolver.check_circular_dependencies(
+                package_name, 
+                version
+            )
+            
+            if has_circular:
+                self.logger.error(f"Circular dependency detected: {' -> '.join(cycle)}")
+                return False
+                
+            return True
+        except Exception as e:
+            self.logger.error(f"Error checking for circular dependencies: {e}")
+            return False
+    
+    def _log_validation_errors(self, results: dict, message: str) -> None:
+        """
+        Log validation errors in a structured way.
+        
+        Args:
+            results: Validation results dictionary
+            message: Header message for the validation errors
+        """
+        self.logger.error(message)
+        for section in ['metadata_schema', 'entry_point', 'dependencies', 'tools']:
+            if section in results and not results[section]['valid']:
+                for error in results[section]['errors']:
+                    self.logger.error(f"  {section.replace('_', ' ').title()} error: {error}")
 
 
 if __name__ == "__main__":
