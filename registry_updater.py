@@ -7,12 +7,8 @@ import datetime  # Make sure to import the datetime module properly
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
-# Add the parent directory to the path to import Hatch modules
-parent_dir = str(Path(__file__).parent.parent/"Hatch-Validator")
-if parent_dir not in sys.path:
-    sys.path.insert(0, parent_dir)
-
-from package_validator import HatchPackageValidator
+# Import Hatch modules
+from hatch_validator import HatchPackageValidator, DependencyResolver
 
 
 class RegistryUpdateError(Exception):
@@ -321,10 +317,6 @@ class RegistryUpdater:
         
         # Check for circular dependencies
         try:
-            parent_dir = Path(__file__).parent.parent
-            sys.path.insert(0, str(parent_dir / "Hatch-Validator"))
-            from dependency_resolver import DependencyResolver
-            
             # Create a dependency resolver that uses our registry
             resolver = DependencyResolver(registry_path=self.registry_path)
             
