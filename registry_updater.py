@@ -45,7 +45,7 @@ class RegistryUpdater:
             self.logger.info(f"Creating new registry at {self.registry_path}")
             registry_data = {
                 "registry_schema_version": "1.0.0",
-                "last_updated": datetime.datetime.utcnow().isoformat(),
+                "last_updated": datetime.datetime.now().isoformat(),
                 "repositories": [],
                 "stats": {
                     "total_packages": 0,
@@ -77,7 +77,7 @@ class RegistryUpdater:
             data = self.registry_data
             
         # Update the timestamp
-        data["last_updated"] = datetime.datetime.utcnow().isoformat()
+        data["last_updated"] = datetime.datetime.now().isoformat()
         
         try:
             # Ensure parent directory exists
@@ -112,7 +112,7 @@ class RegistryUpdater:
             "name": name,
             "url": url,
             "packages": [],
-            "last_indexed": datetime.datetime.utcnow().isoformat()
+            "last_indexed": datetime.datetime.now().isoformat()
         }
         
         self.registry_data.setdefault("repositories", []).append(repository)
@@ -461,7 +461,7 @@ class RegistryUpdater:
             "metadata_path": metadata_path,
             "base_version": base_version,
             "artifacts": artifacts,
-            "added_date": datetime.datetime.utcnow().isoformat()
+            "added_date": datetime.datetime.now().isoformat()
         }
         
         # Add differential data if not the first version
@@ -515,7 +515,7 @@ class RegistryUpdater:
         """
         repo = self.find_repository(repo_name)
         if repo:
-            repo["last_indexed"] = datetime.datetime.utcnow().isoformat()
+            repo["last_indexed"] = datetime.datetime.now().isoformat()
             self._save_registry()
             return True
         return False
