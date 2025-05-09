@@ -3,9 +3,9 @@ import os
 import sys
 import json
 import logging
-import datetime  # Make sure to import the datetime module properly
+import datetime
 from pathlib import Path
-from typing import Dict, Any, List, Optional, Tuple
+from typing import Dict, Any, List, Optional, Tuple, Set, Union
 
 # Import Hatch modules
 from hatch_validator import HatchPackageValidator, DependencyResolver
@@ -233,7 +233,7 @@ class RegistryUpdater:
     def compute_dependency_diff(self, old_deps: List[Dict[str, str]], 
                               new_deps: List[Dict[str, str]]) -> Tuple[List[Dict[str, str]], List[str], List[Dict[str, str]]]:
         """
-        Compute the difference between two sets of dependencies.
+        Compute the difference between two sets of dependencies, using DependencyResolver functionality.
         
         Args:
             old_deps: List of old dependencies [{"name": "pkg", "version_constraint": ">=1.0"}, ...]
@@ -242,12 +242,16 @@ class RegistryUpdater:
         Returns:
             Tuple of (added_deps, removed_deps, modified_deps)
         """
+        # Initialize dependency resolver if not using it already
+        resolver = DependencyResolver(self.registry_data)
+        
+        # Use generic diff computation from our parent class
         return self._compute_generic_diff(old_deps, new_deps, key_field="name", diff_fields=["version_constraint"])
     
     def compute_python_dependency_diff(self, old_deps: List[Dict[str, Any]], 
                                      new_deps: List[Dict[str, Any]]) -> Tuple[List[Dict[str, Any]], List[str], List[Dict[str, Any]]]:
         """
-        Compute the difference between two sets of Python dependencies.
+        Compute the difference between two sets of Python dependencies using DependencyResolver.
         
         Args:
             old_deps: List of old Python dependencies
@@ -256,6 +260,10 @@ class RegistryUpdater:
         Returns:
             Tuple of (added_deps, removed_deps, modified_deps)
         """
+        # Initialize dependency resolver if not using it already
+        resolver = DependencyResolver(self.registry_data)
+        
+        # Use generic diff computation with proper fields for Python dependencies
         return self._compute_generic_diff(old_deps, new_deps, key_field="name", 
                                         diff_fields=["version_constraint", "package_manager"])
     
@@ -265,11 +273,11 @@ class RegistryUpdater:
         Compute the difference between compatibility information.
         
         Args:
-            old_compat: Old compatibility data
-            new_compat: New compatibility data
+            old_compat: Old compatibility data containing hatchling and python version constraints
+            new_compat: New compatibility data containing hatchling and python version constraints
             
         Returns:
-            Dict of changed compatibility constraints
+            Dict[str, str]: Dictionary of changed compatibility constraints
         """
         changes = {}
         
@@ -294,52 +302,83 @@ class RegistryUpdater:
         Returns:
             bool: True if the package was added successfully
         """
+            
+        # Validate repository exists
         repo = self.find_repository(repo_name)
         if not repo:
             self.logger.error(f"Repository {repo_name} not found")
             return False
-        
-        is_valid, results, metadata = self._validate_package(package_dir)
-        
-        if not is_valid:
+            
+        # Validate package directory exists
+        if not package_dir.exists() or not package_dir.is_dir():
+            self.logger.error(f"Package directory does not exist or is not a directory: {package_dir}")
             return False
             
-        # Extract required metadata fields
-        package_name = metadata.get("name")
-        version = metadata.get("version")
-        
-        # Check if package already exists
-        existing_pkg = self.find_package(repo_name, package_name)
-        if existing_pkg:
-            self.logger.info(f"Package {package_name} already exists, adding version {version}")
-            return self.add_package_version(repo_name, package_name, metadata, str(package_dir), metadata_path)
-        
-        # Create new package entry
-        package = {
-            "name": package_name,
-            "description": metadata.get("description", ""),
-            "category": metadata.get("category", ""),
-            "tags": metadata.get("tags", []),
-            "versions": [],
-            "latest_version": version
-        }
-        
-        # Add the package to the repository
-        repo["packages"].append(package)
-        
-        # Add the first version (no differential, contains all data)
-        self.add_package_version(repo_name, package_name, metadata, str(package_dir), metadata_path, is_first_version=True)
-        
-        # Update stats
-        self.registry_data["stats"]["total_packages"] += 1
-        
-        self._save_registry()
-        self.logger.info(f"Added package {package_name} to repository {repo_name}")
-        
-        return True
+        try:
+            # Validate package
+            is_valid, results = self._validate_package(package_dir)
+            
+            if not is_valid:
+                return False
+            
+            # Extract required metadata fields
+            metadata = results["metadata"] 
+            if not metadata:
+                self.logger.error(f"No metadata found in validation results")
+                return False
+                
+            package_name = metadata.get("name")
+            if not package_name:
+                self.logger.error("Package name not found in metadata")
+                return False
+                
+            version = metadata.get("version")
+            if not version:
+                self.logger.error("Package version not found in metadata")
+                return False
+            
+            # Check if package already exists
+            existing_pkg = self.find_package(repo_name, package_name)
+            if existing_pkg:
+                self.logger.info(f"Package {package_name} already exists, adding version {version}")
+                return self.update_package_registry(repo_name, package_name, package_dir, metadata_path)
+            
+            # Create new package entry
+            package = {
+                "name": package_name,
+                "description": metadata.get("description", ""),
+                "category": metadata.get("category", ""),
+                "tags": metadata.get("tags", []),
+                "versions": [],
+                "latest_version": version
+            }
+            
+            # Add the package to the repository
+            repo["packages"].append(package)
+            
+            # Add the first version (no differential, contains all data)
+            version_added = self.update_package_registry(repo_name, package_name, package_dir, metadata_path, is_first_version=True)
+            
+            if not version_added:
+                # If adding the version failed, remove the package we just added
+                repo["packages"] = [pkg for pkg in repo["packages"] if pkg["name"] != package_name]
+                self.logger.error(f"Failed to add version {version} for package {package_name}, package not added")
+                return False
+                
+            # Update stats
+            self.registry_data["stats"]["total_packages"] += 1
+            
+            self._save_registry()
+            self.logger.info(f"Added package {package_name} version {version} to repository {repo_name}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error adding package: {e}")
+            return False
     
-    def add_package_version(self, repo_name: str, package_name: str, metadata: dict, 
-                          package_path: str, metadata_path: str = "hatch_metadata.json",
+    def update_package_registry(self, repo_name: str, package_name: str,
+                          package_path: Path, metadata_path: str = "hatch_metadata.json",
                           is_first_version: bool = False) -> bool:
         """
         Add a new version of an existing package using differential storage.
@@ -347,69 +386,92 @@ class RegistryUpdater:
         Args:
             repo_name: Repository name
             package_name: Package name
-            metadata: Package metadata
             package_path: Path to the package
-            metadata_path: Relative path to the metadata file
+            metadata_path: Relative path to package_path
             is_first_version: If True, this is the first version of the package
             
         Returns:
             bool: True if the version was added successfully
         """
-        pkg = self.find_package(repo_name, package_name)
-        if not pkg:
-            self.logger.error(f"Package {package_name} not found in repository {repo_name}")
-            return False
-        
-        version = metadata.get("version")
-        if not version:
-            self.logger.error("Missing version in metadata")
-            return False
+        try:
+            # Find package in repository
+            pkg = self.find_package(repo_name, package_name)
+            if not pkg:
+                self.logger.error(f"Package {package_name} not found in repository {repo_name}")
+                return False
             
-        # Check if version already exists
-        if self.find_version(repo_name, package_name, version):
-            self.logger.warning(f"Version {version} of package {package_name} already exists")
-            return False
+            # Open the metadata file
+            metadata_file = package_path / metadata_path
+            if not metadata_file.exists():
+                self.logger.error(f"Metadata file not found: {metadata_file}")
+                return False
             
-        # Perform additional validation on the package version
-        package_dir = Path(package_path)
-        if not package_dir.exists() or not package_dir.is_dir():
-            self.logger.error(f"Package directory does not exist: {package_path}")
-            return False
-            
-        is_valid, results, metadata = self._validate_package(package_dir)
-        
-        if not is_valid:
-            return False
-        
-        # Verify that the version in metadata matches the version provided
-        if metadata.get("version") != version:
-            self.logger.error(f"Version mismatch: {metadata.get('version')} in metadata vs {version} provided")
-            return False
-            
-        # Check for circular dependencies when updating the registry
-        if not self._check_circular_dependencies(package_name, version):
-            return False
+            metadata = {}
+            with open(metadata_file, 'r') as f:
+                metadata = json.load(f)
 
-        # Prepare version data
-        version_data = self._prepare_version_data(repo_name, package_name, metadata, package_path, metadata_path, is_first_version)
-        
-        # Add the version to the package
-        pkg["versions"].append(version_data)
-        
-        # Update latest version
-        pkg["latest_version"] = version
-        
-        # Update stats
-        self.registry_data["stats"]["total_versions"] += 1
-        self.registry_data["stats"]["total_artifacts"] += len(version_data["artifacts"])
-        
-        self._save_registry()
-        self.logger.info(f"Added version {version} to package {package_name}")
-        
-        return True
+            version = metadata.get("version")
+            if not version:
+                self.logger.error("Missing version in metadata")
+                return False
+                
+            # Check if version already exists
+            if self.find_version(repo_name, package_name, version):
+                self.logger.error(f"Version {version} of package {package_name} already exists")
+                return False
+                
+            # Convert to Path object if string
+            package_dir = package_path
+            if isinstance(package_path, str):
+                package_dir = Path(package_path)
+            
+            # Validate path exists
+            if not package_dir.exists() or not package_dir.is_dir():
+                self.logger.error(f"Package directory does not exist: {package_dir}")
+                return False
+            
+            self.logger.debug(f"Validating package {package_name} version {version} at {package_dir}")
+
+            # Create pending update tuple for circular dependency detection
+            pending_update = (package_name, metadata)
+
+            # Perform validation with pending update information
+            is_valid, results = self._validate_package(package_dir, pending_update)
+            
+            if not is_valid:
+                self.logger.error(f"Validation failed for package {package_name} version {version}")
+                return False
+            
+            # Verify that the version in metadata matches the version provided
+            result_metadata = results["metadata"]
+            if result_metadata["version"] != version:
+                self.logger.error(f"Version mismatch: {result_metadata['version']} in metadata vs {version} provided")
+                return False
+
+            # Prepare version data
+            version_data = self._prepare_version_data(repo_name, package_name, metadata, str(package_dir), metadata_path, is_first_version)
+            
+            # Add the version to the package
+            pkg["versions"].append(version_data)
+            
+            # Update latest version
+            pkg["latest_version"] = version
+            
+            # Update stats
+            self.registry_data["stats"]["total_versions"] += 1
+            self.registry_data["stats"]["total_artifacts"] += len(version_data.get("artifacts", []))
+            
+            self._save_registry()
+            self.logger.info(f"Added version {version} to package {package_name}")
+            
+            return True
+            
+        except Exception as e:
+            self.logger.error(f"Error updating package registry: {e}")
+            return False
     
     def _prepare_version_data(self, repo_name: str, package_name: str, metadata: dict,
-                           package_path: str, metadata_path: str, is_first_version: bool) -> Dict[str, Any]:
+                           package_path: Path, metadata_path: Path, is_first_version: bool) -> Dict[str, Any]:
         """
         Prepare version data for storage in the registry.
         
@@ -430,22 +492,16 @@ class RegistryUpdater:
         
         version_data = {
             "version": version,
-            "path": package_path,
-            "metadata_path": metadata_path,
+            "path": str(package_path),
+            "metadata_path": str(metadata_path),
             "artifacts": artifacts,
             "added_date": datetime.datetime.now().isoformat()
         }
         
-        # Get dependencies for the package
-        dependencies_added = metadata.get("dependencies", [])
-        dependencies_removed = []
-        dependencies_modified = []
-        
-        python_dependencies_added = metadata.get("python_dependencies", [])
-        python_dependencies_removed = []
-        python_dependencies_modified = []
-        
-        compatibility_changes = metadata.get("compatibility", {})
+        # Get dependencies from the package metadata
+        hatch_dependencies = metadata.get("hatch_dependencies", [])
+        python_dependencies = metadata.get("python_dependencies", [])
+        compatibility = metadata.get("compatibility", {})
         base_version = None
         
         # For differential storage, compute changes from base version
@@ -457,16 +513,19 @@ class RegistryUpdater:
                 
                 if base_version_data:
                     # Load the full base version metadata to compute diffs
-                    base_metadata_path = os.path.join(base_version_data["path"], base_version_data["metadata_path"])
+                    base_metadata_path = Path(base_version_data["path"]) / base_version_data["metadata_path"]
                     
                     try:
                         with open(base_metadata_path, 'r') as f:
                             base_metadata = json.load(f)
                             
+                        # Initialize dependency resolver for diff computation
+                        resolver = DependencyResolver(self.registry_data)
+                            
                         # Compute diffs for dependencies
                         dependencies_added, dependencies_removed, dependencies_modified = self.compute_dependency_diff(
-                            base_metadata.get("dependencies", []),
-                            metadata.get("dependencies", [])
+                            base_metadata.get("hatch_dependencies", []),
+                            metadata.get("hatch_dependencies", [])
                         )
                         
                         # Compute diffs for Python dependencies
@@ -485,34 +544,54 @@ class RegistryUpdater:
                         self.logger.error(f"Error computing diffs: {e}")
                         # Fall back to non-differential storage
                         is_first_version = True
+                        dependencies_added = hatch_dependencies
+                        python_dependencies_added = python_dependencies
+                        compatibility_changes = compatibility
+                        dependencies_removed = []
+                        dependencies_modified = []
+                        python_dependencies_removed = []
+                        python_dependencies_modified = []
+                else:
+                    # Fallback if base version data is missing
+                    is_first_version = True
+                    dependencies_added = hatch_dependencies
+                    python_dependencies_added = python_dependencies
+                    compatibility_changes = compatibility
+                    dependencies_removed = []
+                    dependencies_modified = []
+                    python_dependencies_removed = []
+                    python_dependencies_modified = []
+        else:
+            # First version - store complete information
+            dependencies_added = hatch_dependencies
+            python_dependencies_added = python_dependencies
+            compatibility_changes = compatibility
+            dependencies_removed = []
+            dependencies_modified = []
+            python_dependencies_removed = []
+            python_dependencies_modified = []
         
         # Add the base version reference
         if base_version:
             version_data["base_version"] = base_version
         
-        # Add differential data if not the first version
-        if not is_first_version:
-            if dependencies_added:
-                version_data["dependencies_added"] = dependencies_added
-            if dependencies_removed:
-                version_data["dependencies_removed"] = dependencies_removed
-            if dependencies_modified:
-                version_data["dependencies_modified"] = dependencies_modified
-                
-            if python_dependencies_added:
-                version_data["python_dependencies_added"] = python_dependencies_added
-            if python_dependencies_removed:
-                version_data["python_dependencies_removed"] = python_dependencies_removed
-            if python_dependencies_modified:
-                version_data["python_dependencies_modified"] = python_dependencies_modified
-                
-            if compatibility_changes:
-                version_data["compatibility_changes"] = compatibility_changes
-        else:
-            # For first version, store complete dependency information
-            version_data["dependencies_added"] = metadata.get("dependencies", [])
-            version_data["python_dependencies_added"] = metadata.get("python_dependencies", [])
-            version_data["compatibility_changes"] = metadata.get("compatibility", {})
+        # Add differential data - using "hatch_dependencies" key to match package_validator.py
+        if dependencies_added:
+            version_data["hatch_dependencies_added"] = dependencies_added
+        if dependencies_removed:
+            version_data["hatch_dependencies_removed"] = dependencies_removed
+        if dependencies_modified:
+            version_data["hatch_dependencies_modified"] = dependencies_modified
+            
+        if python_dependencies_added:
+            version_data["python_dependencies_added"] = python_dependencies_added
+        if python_dependencies_removed:
+            version_data["python_dependencies_removed"] = python_dependencies_removed
+        if python_dependencies_modified:
+            version_data["python_dependencies_modified"] = python_dependencies_modified
+            
+        if compatibility_changes:
+            version_data["compatibility_changes"] = compatibility_changes
         
         return version_data
     
@@ -533,71 +612,32 @@ class RegistryUpdater:
             return True
         return False
     
-    def _validate_package(self, package_dir: Path) -> Tuple[bool, Optional[dict], Optional[dict]]:
+    def _validate_package(self, package_dir: Path, pending_update: Optional[Tuple[str, Dict]] = None) -> Tuple[bool, dict]:
         """
         Validate a package against schemas and check for circular dependencies.
         
         Args:
             package_dir: Path to the package directory
-            
+            pending_update: Optional tuple (pkg_name, metadata) with pending update information
+        
         Returns:
-            Tuple of (is_valid, validation_results, metadata)
+            Tuple of (is_valid, validation_results)
         """
         # Validate the package - disallow local dependencies for registry packages
-        validator = HatchPackageValidator(allow_local_dependencies=False)
-        is_valid, results = validator.validate_package(package_dir)
+        validator = HatchPackageValidator(
+            allow_local_dependencies=False, 
+            registry_data=self.registry_data,
+            force_schema_update=False
+        )
+        
+        is_valid, results = validator.validate_package(package_dir, pending_update)
         
         if not is_valid:
             # Log validation errors
             self._log_validation_errors(results, "Package validation failed")
-            return False, results, None
-            
-        # Load the metadata
-        metadata = results['metadata']
+            return False, results
         
-        # Extract required metadata fields
-        package_name = metadata.get("name")
-        version = metadata.get("version")
-        
-        if not package_name or not version:
-            self.logger.error(f"Missing required metadata fields (name, version)")
-            return False, results, None
-            
-        # Check for circular dependencies
-        if not self._check_circular_dependencies(package_name, version):
-            return False, results, None
-                
-        return True, results, metadata
-    
-    def _check_circular_dependencies(self, package_name: str, version: str) -> bool:
-        """
-        Check for circular dependencies in a package.
-        
-        Args:
-            package_name: Name of the package
-            version: Version of the package
-            
-        Returns:
-            bool: True if no circular dependencies found
-        """
-        try:
-            # Create a dependency resolver that uses our registry
-            resolver = DependencyResolver(registry_path=self.registry_path)
-            
-            # Check for circular dependencies
-            has_circular, cycle = resolver.check_circular_dependencies(
-                package_name, 
-                version
-            )
-            
-            if has_circular:
-                self.logger.error(f"Circular dependency detected: {' -> '.join(cycle)}")
-                return False
-                
-            return True
-        except Exception as e:
-            self.logger.error(f"Error checking for circular dependencies: {e}")
-            return False
+        return True, results
     
     def _log_validation_errors(self, results: dict, message: str) -> None:
         """
@@ -612,7 +652,6 @@ class RegistryUpdater:
             if section in results and not results[section]['valid']:
                 for error in results[section]['errors']:
                     self.logger.error(f"  {section.replace('_', ' ').title()} error: {error}")
-
 
 if __name__ == "__main__":
     # Simple CLI for testing
