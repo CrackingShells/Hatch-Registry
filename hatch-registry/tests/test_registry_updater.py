@@ -13,7 +13,7 @@ from typing import Dict, List, Any, Tuple
 # Add parent directory to path if needed for direct testing
 sys.path.insert(0, str(Path(__file__).parent))
 
-from registry_updater import RegistryUpdater
+from ..registry_updater import RegistryUpdater
 
 # Configure logging
 logging.basicConfig(
