@@ -1,0 +1,24 @@
+name: Add Package Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      message:
+        description: 'Message from triggering workflow'
+        required: true
+        type: string
+
+jobs:
+  process-message:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+      
+      - name: Display received message
+        run: |
+          echo "Received message: ${{ github.event.inputs.message }}"
+          echo "This workflow was triggered by a workflow dispatch from Hatch-Dev!"
+      
+      # Additional steps can be added here to actually process 
+      # the package data that would be sent from Hatch-Dev
