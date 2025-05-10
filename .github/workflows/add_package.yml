@@ -11,10 +11,33 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v4
       
-      - name: Display received message
-        run: |
-          echo "Received message: ${{ github.event.client_payload.message }}"
-          echo "This workflow was triggered by a workflow dispatch from Hatch-Dev!"
+      - name: Generate GitHub App token
+        id: generate-token
+        uses: tibdex/github-app-token@v2
+        with:
+          app_id: ${{ secrets.HATCH_WORKFLOW_APP_ID }}
+          private_key: ${{ secrets.HATCH_WORKFLOW_APP_PRIVATE_KEY }}
       
-      # Additional steps can be added here to actually process 
-      # the package data that would be sent from Hatch-Dev
+      - name: Download package artifact
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ steps.generate-token.outputs.token }}
+          workflow: ${{ github.event.client_payload.workflow_id }}
+          run_id: ${{ github.event.client_payload.run_id }}
+          name: ${{ github.event.client_payload.artifact_name }}
+          repo: ${{ github.event.client_payload.repository }}
+          path: downloaded-package
+      
+      - name: Process package 
+        run: |
+          echo "Processing package: ${{ github.event.client_payload.package_name }}"
+          echo "Package contents:"
+          ls -la downloaded-package
+          
+          # Your package processing logic here
+          # For example:
+          # - Copy files to registry directory
+          # - Update package index
+          # - Generate documentation
+          
+          echo "Package successfully registered!"
