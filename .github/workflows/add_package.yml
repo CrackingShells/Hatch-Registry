@@ -1,12 +1,8 @@
 name: Add Package Workflow
 
 on:
-  workflow_dispatch:
-    inputs:
-      message:
-        description: 'Message from triggering workflow'
-        required: true
-        type: string
+  repository_dispatch:
+    types: [add-package]
 
 jobs:
   process-message:
@@ -17,7 +13,7 @@ jobs:
       
       - name: Display received message
         run: |
-          echo "Received message: ${{ github.event.inputs.message }}"
+          echo "Received message: ${{ github.event.client_payload.message }}"
           echo "This workflow was triggered by a workflow dispatch from Hatch-Dev!"
       
       # Additional steps can be added here to actually process 
