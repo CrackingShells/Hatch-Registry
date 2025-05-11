@@ -79,7 +79,7 @@ def main():
         updater = RegistryUpdater(registry_path)
         
         if args.command == 'add-repository':
-            success = updater.add_repository(args.name, args.url)
+            success = updater.core.add_repository(args.name, args.url)
             sys.exit(0 if success else 1)
             
         elif args.command == 'add-package':
@@ -96,7 +96,7 @@ def main():
             sys.exit(0 if success else 1)
             
         elif args.command == 'list-repositories':
-            repositories = updater.registry_data.get("repositories", [])
+            repositories = updater.core.registry_data.get("repositories", [])
             print(f"Repositories ({len(repositories)}):")
             for repo in repositories:
                 print(f"  - {repo['name']}: {repo['url']}")
@@ -105,7 +105,7 @@ def main():
             sys.exit(0)
             
         elif args.command == 'list-packages':
-            repo = updater.find_repository(args.repository)
+            repo = updater.core.find_repository(args.repository)
             if not repo:
                 print(f"Repository not found: {args.repository}")
                 sys.exit(1)
@@ -119,7 +119,7 @@ def main():
             sys.exit(0)
             
         elif args.command == 'show-package':
-            pkg = updater.find_package(args.repository, args.package_name)
+            pkg = updater.core.find_package(args.repository, args.package_name)
             if not pkg:
                 print(f"Package not found: {args.package_name} in repository {args.repository}")
                 sys.exit(1)
