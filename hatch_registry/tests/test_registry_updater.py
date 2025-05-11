@@ -11,9 +11,9 @@ from datetime import datetime
 from typing import Dict, List, Any, Tuple
 
 # Add parent directory to path if needed for direct testing
-sys.path.insert(0, str(Path(__file__).parent))
+sys.path.insert(0, str(Path(__file__).parent.parent.parent))
 
-from ..registry_updater import RegistryUpdater
+from hatch_registry.registry_updater import RegistryUpdater
 
 # Configure logging
 logging.basicConfig(
@@ -48,7 +48,7 @@ class RegistryUpdaterTests(unittest.TestCase):
             json.dump(test_registry, f, indent=2)
             
         # Path to Hatch-Dev packages
-        self.hatch_dev_path = Path(__file__).parent.parent / "Hatch-Dev"
+        self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatch-Dev"
         self.assertTrue(self.hatch_dev_path.exists(), 
                        f"Hatch-Dev directory not found at {self.hatch_dev_path}")
         
@@ -57,7 +57,7 @@ class RegistryUpdaterTests(unittest.TestCase):
         
         # Add a test repository
         self.repo_name = "test-repo"
-        self.registry_updater.add_repository(self.repo_name, "file:///test-repo")
+        self.registry_updater.core.add_repository(self.repo_name, "file:///test-repo")
         
     def tearDown(self):
         """Clean up test environment after each test."""
@@ -78,12 +78,12 @@ class RegistryUpdaterTests(unittest.TestCase):
         self.assertTrue(result, "Failed to add valid package")
         
         # Verify the package is in the registry
-        pkg = self.registry_updater.find_package(self.repo_name, "arithmetic_pkg")
+        pkg = self.registry_updater.core.find_package(self.repo_name, "arithmetic_pkg")
         self.assertIsNotNone(pkg, "Package not found in registry")
         self.assertEqual(pkg["name"], "arithmetic_pkg")
         
         # Verify stats were updated
-        stats = self.registry_updater.registry_data["stats"]
+        stats = self.registry_updater.core.registry_data["stats"]
         self.assertEqual(stats["total_packages"], 1)
         self.assertEqual(stats["total_versions"], 1)
     
@@ -102,9 +102,9 @@ class RegistryUpdaterTests(unittest.TestCase):
         self.assertTrue(result, "Failed to add package with simple dependency")
         
         # Verify both packages are in the registry
-        base_pkg = self.registry_updater.find_package(self.repo_name, "base_pkg_1")
-        dep_pkg = self.registry_updater.find_package(self.repo_name, "simple_dep_pkg")
-        
+        base_pkg = self.registry_updater.core.find_package(self.repo_name, "base_pkg_1")
+        dep_pkg = self.registry_updater.core.find_package(self.repo_name, "simple_dep_pkg")
+
         self.assertIsNotNone(base_pkg, "Base package not found in registry")
         self.assertIsNotNone(dep_pkg, "Dependent package not found in registry")
     
@@ -149,7 +149,7 @@ class RegistryUpdaterTests(unittest.TestCase):
             self.assertFalse(result, "Should have failed to add package with missing dependency")
             
             # Verify the package is not in the registry
-            pkg = self.registry_updater.find_package(self.repo_name, "missing_dep_pkg")
+            pkg = self.registry_updater.core.find_package(self.repo_name, "missing_dep_pkg")
             self.assertIsNone(pkg, "Package with missing dependency should not be in registry")
         else:
             logger.warning(f"Missing dependency test package not found: {pkg_path}")
@@ -176,7 +176,7 @@ class RegistryUpdaterTests(unittest.TestCase):
             self.assertTrue(result, "Failed to add package with complex dependencies")
             
             # Verify the package is in the registry
-            pkg = self.registry_updater.find_package(self.repo_name, "complex_dep_pkg")
+            pkg = self.registry_updater.core.find_package(self.repo_name, "complex_dep_pkg")
             self.assertIsNotNone(pkg, "Complex dependency package not found in registry")
         else:
             logger.warning(f"Complex dependency test package not found: {complex_pkg_path}")
@@ -221,7 +221,7 @@ class RegistryUpdaterTests(unittest.TestCase):
         self.assertFalse(result, "Should have failed to add duplicate package version")
         
         # Check stats to ensure no duplication
-        stats = self.registry_updater.registry_data["stats"]
+        stats = self.registry_updater.core.registry_data["stats"]
         self.assertEqual(stats["total_packages"], 1)
         self.assertEqual(stats["total_versions"], 1)
 
@@ -245,7 +245,7 @@ class RegistryIntegrationTests(unittest.TestCase):
         
         # Add a test repository
         self.repo_name = "hatch-dev"
-        self.registry_updater.add_repository(self.repo_name, "file:///hatch-dev")
+        self.registry_updater.core.add_repository(self.repo_name, "file:///hatch-dev")
     
     def tearDown(self):
         """Clean up test environment after each test."""
@@ -275,7 +275,7 @@ class RegistryIntegrationTests(unittest.TestCase):
             logger.info(f"Result: {result}")
             
             # Verify package was added
-            pkg = self.registry_updater.find_package(self.repo_name, pkg_name)
+            pkg = self.registry_updater.core.find_package(self.repo_name, pkg_name)
             self.assertIsNotNone(pkg, f"Package {pkg_name} should have been added to registry")
     
     def test_failing_packages(self):
