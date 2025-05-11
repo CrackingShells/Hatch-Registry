@@ -221,7 +221,7 @@ class RegistryDiff:
             for key, value in ver.get("compatibility_changes", {}).items():
                 reconstructed["compatibility"][key] = value
 
-        self.logger.debug(f"Successfully reconstructed metadata for {package["name"]} v{version_info["version"]}")
+        self.logger.debug(f"Successfully reconstructed metadata for {package['name']} v{version_info['version']}")
         return reconstructed
 
 
