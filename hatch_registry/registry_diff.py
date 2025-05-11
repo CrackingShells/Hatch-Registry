@@ -122,3 +122,106 @@ class RegistryDiff:
                 changes[key] = new_val
                 
         return changes
+
+    def reconstruct_package_version(self, package: Dict[str, Any], version_info: Dict[str, Any] = None) -> Dict[str, Any]:
+        """
+        Reconstruct complete package metadata for a specific version by walking the diff tree.
+        If version is not specified, uses the latest version.
+        
+        Args:
+            package: Package object from the registry
+            version_info: Specific version information from which to start reconstruction
+
+        Returns:
+            Dict[str, Any]: Reconstructed package metadata including dependencies and compatibility
+            
+        Raises:
+            RegistryDiffError: If version not found or reconstruction fails
+        """
+
+        if not package:
+            msg = "No package data provided"
+            self.logger.error(msg)
+            raise RegistryDiffError(msg)
+        
+        # If version not specified, use latest
+        if version_info is None:
+            version_info = package["versions"][-1]
+
+        package_versions = package["versions"]
+
+        version_chain = []
+        while version_info.get("base_version"):
+            version_chain += [version_info]
+            base_version = version_info.get("base_version")
+            # If no base version, we are at the root of the chain
+            # and can stop
+            if not base_version:
+                break
+
+            # Find the next version in the chain
+            for ver in package_versions:
+                if ver.get("version") == base_version:
+                    version_info = ver
+                    break
+        
+        # Now reconstruct the package metadata
+        reconstructed = {
+            "name": package["name"],
+            "version": version_info["version"],
+            "hatch_dependencies": [],
+            "python_dependencies": [],
+            "compatibility": {}
+        }
+
+        # Apply changes from each version in the chain
+        for ver in reversed(version_chain): # version chain was built from latest to oldest
+            # Process hatch dependencies
+            # Apply diffs for Hatch dependencies
+            # Add new dependencies
+            for dep in ver.get("hatch_dependencies_added", []):
+                reconstructed["hatch_dependencies"].append(dep)
+
+            # Remove dependencies
+            for dep_name in ver.get("hatch_dependencies_removed", []):
+                reconstructed["hatch_dependencies"] = [
+                    d for d in reconstructed["hatch_dependencies"] 
+                    if d.get("name") != dep_name
+                ]
+                
+            # Modify dependencies
+            for mod_dep in ver.get("hatch_dependencies_modified", []):
+                for i, dep in enumerate(reconstructed["hatch_dependencies"]):
+                    if dep.get("name") == mod_dep.get("name"):
+                        reconstructed["hatch_dependencies"][i] = mod_dep
+                        break
+            
+            # Process Python dependencies
+            # Apply diffs for Python dependencies
+            # Add new dependencies
+            for dep in ver.get("python_dependencies_added", []):
+                reconstructed["python_dependencies"].append(dep)
+                
+            # Remove dependencies
+            for dep_name in ver.get("python_dependencies_removed", []):
+                reconstructed["python_dependencies"] = [
+                    d for d in reconstructed["python_dependencies"] 
+                    if d.get("name") != dep_name
+                ]
+                
+            # Modify dependencies
+            for mod_dep in ver.get("python_dependencies_modified", []):
+                for i, dep in enumerate(reconstructed["python_dependencies"]):
+                    if dep.get("name") == mod_dep.get("name"):
+                        reconstructed["python_dependencies"][i] = mod_dep
+                        break
+            
+            # Process compatibility info
+            # Update compatibility with changes
+            for key, value in ver.get("compatibility_changes", {}).items():
+                reconstructed["compatibility"][key] = value
+
+        self.logger.debug(f"Successfully reconstructed metadata for {package["name"]} v{version_info["version"]}")
+        return reconstructed
+
+
