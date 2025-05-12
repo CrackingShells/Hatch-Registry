@@ -48,7 +48,8 @@ jobs:
       
       - name: Validate package
         run: |
-          hatch-registry validate-package --repository-name ${{ github.event.client_payload.repository }} --package-dir ./downloaded-package
+          REPO="${{ github.event.client_payload.repository }}"
+          hatch-registry validate-package --repository-name ${REPO##*/} --package-dir ./downloaded-package
           if [ $? -ne 0 ]; then
             echo "Package validation failed."
             exit 1
