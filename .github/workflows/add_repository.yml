@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       repository_name:
-        description: 'Name of the repository to add'
-        required: true
-        default: 'Hatching-Dev'
-      path:
-        description: 'URL path of the repository to add IN CRACKING SHELLS'
+        description: 'Name of the repository to add to track in the registry. This name must resolve to a valid repository in CrackingShells'
         required: true
         default: 'Hatching-Dev'
 
@@ -18,7 +14,9 @@ jobs:
     steps:
       - name: Checkout repository
         uses: actions/checkout@v4
-
+        with:
+          submodules: true
+    
       - name: Install pip
         uses: actions/setup-python@v5
         with:
@@ -37,7 +35,7 @@ jobs:
             try {
                 const response = await github.rest.repos.get({
                     owner: 'CrackingShells',
-                    repo: '${{ github.event.inputs.path }}'
+                    repo: '${{ github.event.inputs.repository_name }}'
                 });
                 
                 // Repository exists, response.data contains repository information
@@ -51,21 +49,15 @@ jobs:
     
       - name: Add repository
         run: |
-          hatch-registry add-repository --repository-name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.path }}
+          hatch-registry add-repository --name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.repository_name }}
           if [ $? -ne 0 ]; then
             echo "Failed to add repository."
             exit 1
           fi
-    
-  push-new-registry:
-    runs-on: ubuntu-latest
-    needs: add-repository
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Push to main branch
         uses: EndBug/add-and-commit@v9
+        if: ${{ !cancelled() && !failure() }}
         with:
           add: "./data/hatch_packages_registry.json"
           message: "[ADD] New repository ${{ github.event.inputs.repository_name }}"
