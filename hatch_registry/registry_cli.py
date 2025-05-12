@@ -1,11 +1,9 @@
-#!/usr/bin/env python3
 import sys
-import os
 import argparse
 import logging
 from pathlib import Path
 
-from .registry_updater import RegistryUpdater, RegistryUpdateError
+from .registry_updater import RegistryUpdater
 
 def main():
     """Main entry point for registry CLI."""
@@ -17,44 +15,33 @@ def main():
     add_repo_parser = subparsers.add_parser('add-repository', help='Add a new repository')
     add_repo_parser.add_argument('--name', required=True, help='Repository name')
     add_repo_parser.add_argument('--url', required=True, help='Repository URL')
-    add_repo_parser.add_argument('--registry', required=True, help='Path to registry file')
     
     # Add package command
-    add_pkg_parser = subparsers.add_parser('add-package', help='Add a new package')
-    add_pkg_parser.add_argument('--repository', required=True, help='Repository name')
+    add_pkg_parser = subparsers.add_parser('add-package', help='Performs validation and add a new package')
+    add_pkg_parser.add_argument('--repository-name', required=True, help='Repository name')
     add_pkg_parser.add_argument('--package-dir', required=True, help='Path to package directory')
-    add_pkg_parser.add_argument('--metadata-path', default='hatch_metadata.json', help='Relative path to metadata file')
-    add_pkg_parser.add_argument('--registry', required=True, help='Path to registry file')
-    
-    # Update package command
-    update_pkg_parser = subparsers.add_parser('update-package', help='Update an existing package')
-    update_pkg_parser.add_argument('--repository', required=True, help='Repository name')
-    update_pkg_parser.add_argument('--package-name', required=True, help='Package name')
-    update_pkg_parser.add_argument('--package-dir', required=True, help='Path to package directory')
-    update_pkg_parser.add_argument('--metadata-path', default='hatch_metadata.json', help='Relative path to metadata file')
-    update_pkg_parser.add_argument('--registry', required=True, help='Path to registry file')
     
     # List repositories command
     list_repos_parser = subparsers.add_parser('list-repositories', help='List all repositories')
-    list_repos_parser.add_argument('--registry', required=True, help='Path to registry file')
     
     # List packages command
     list_pkgs_parser = subparsers.add_parser('list-packages', help='List packages in a repository')
-    list_pkgs_parser.add_argument('--repository', required=True, help='Repository name')
-    list_pkgs_parser.add_argument('--registry', required=True, help='Path to registry file')
+    list_pkgs_parser.add_argument('--repository-name', required=True, help='Repository name')
     
     # Show package command
     show_pkg_parser = subparsers.add_parser('show-package', help='Show package details')
-    show_pkg_parser.add_argument('--repository', required=True, help='Repository name')
+    show_pkg_parser.add_argument('--repository-name', required=True, help='Repository name')
     show_pkg_parser.add_argument('--package-name', required=True, help='Package name')
-    show_pkg_parser.add_argument('--registry', required=True, help='Path to registry file')
     
     # Validate package command
-    validate_pkg_parser = subparsers.add_parser('validate-package', help='Validate a package')
+    validate_pkg_parser = subparsers.add_parser('validate-package', help='Validate whether a package can be added to the registry.')
+    validate_pkg_parser.add_argument('--repository-name', required=True, help='Repository name')
     validate_pkg_parser.add_argument('--package-dir', required=True, help='Path to package directory')
-    validate_pkg_parser.add_argument('--registry', required=True, help='Path to registry file')
     
     # Common args
+    parser.add_argument('--registry',
+                        default="./data/hatch_packages_registry.json",
+                        help='Path to registry file. Default (./data/hatch_packages_registry.json) is relative to "/Hatch-Registry"')
     parser.add_argument('--log-level', 
                       choices=['DEBUG', 'INFO', 'WARNING', 'ERROR', 'CRITICAL'],
                       default='INFO', 
@@ -83,17 +70,11 @@ def main():
             sys.exit(0 if success else 1)
             
         elif args.command == 'add-package':
-            success = updater.add_package(args.repository, Path(args.package_dir), args.metadata_path)
-            sys.exit(0 if success else 1)
-            
-        elif args.command == 'update-package':
-            success = updater.update_package_registry(
-                args.repository,
-                args.package_name,
-                Path(args.package_dir),
-                Path(args.metadata_path)
-            )
-            sys.exit(0 if success else 1)
+            success = updater.validate_and_add_package(args.repository_name, Path(args.package_dir))
+            if not success:
+                print(f"Failed to add package to repository {args.repository_name}")
+                sys.exit(1)
+            sys.exit(0)
             
         elif args.command == 'list-repositories':
             repositories = updater.core.registry_data.get("repositories", [])
@@ -105,13 +86,13 @@ def main():
             sys.exit(0)
             
         elif args.command == 'list-packages':
-            repo = updater.core.find_repository(args.repository)
+            repo = updater.core.find_repository(args.repository_name)
             if not repo:
-                print(f"Repository not found: {args.repository}")
+                print(f"Repository not found: {args.repository_name}")
                 sys.exit(1)
                 
             packages = repo.get("packages", [])
-            print(f"Packages in {args.repository} ({len(packages)}):")
+            print(f"Packages in {args.repository_name} ({len(packages)}):")
             for pkg in packages:
                 print(f"  - {pkg['name']} ({pkg.get('latest_version', 'No version')})")
                 print(f"    Description: {pkg.get('description', 'No description')}")
@@ -119,9 +100,9 @@ def main():
             sys.exit(0)
             
         elif args.command == 'show-package':
-            pkg = updater.core.find_package(args.repository, args.package_name)
+            pkg = updater.core.find_package(args.repository_name, args.package_name)
             if not pkg:
-                print(f"Package not found: {args.package_name} in repository {args.repository}")
+                print(f"Package not found: {args.package_name} in repository {args.repository_name}")
                 sys.exit(1)
                 
             print(f"Package: {pkg['name']}")
@@ -133,12 +114,10 @@ def main():
             for version in pkg.get('versions', []):
                 print(f"  - {version.get('version', 'Unknown')}")
                 print(f"    Added: {version.get('added_date', 'Unknown')}")
-                print(f"    Path: {version.get('path', 'Unknown')}")
-                print(f"    Artifacts: {len(version.get('artifacts', []))}")
             sys.exit(0)
             
         elif args.command == 'validate-package':
-            is_valid, results = updater.validator.validate_package(Path(args.package_dir))
+            is_valid, results = updater.validate_package(args.repository_name, Path(args.package_dir))
             if is_valid:
                 print(f"Package validation successful: {args.package_dir}")
                 sys.exit(0)

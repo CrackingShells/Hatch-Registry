@@ -212,13 +212,13 @@ class RegistryUpdater:
                 
             package_name = metadata.get("name")
             if not package_name:
-                self.logger.error("Package name not found in metadata")
-                return False, {"valid": False, "errors": ["Package name not found in metadata"]}
+                self.logger.error("Package name not found in provided package metadata file")
+                return False, {"valid": False, "errors": ["Package name not found in provided package metadata file"]}
                 
             version = metadata.get("version")
             if not version:
-                self.logger.error("Package version not found in metadata")
-                return False, {"valid": False, "errors": ["Package version not found in metadata"]}
+                self.logger.error("Package version not found in provided package metadata file")
+                return False, {"valid": False, "errors": ["Package version not found in provided package metadata file"]}
             
             # Check if package already exists
             existing_pkg = self.core.find_package(repo_name, package_name)
