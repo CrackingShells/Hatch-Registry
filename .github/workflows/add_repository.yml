@@ -54,16 +54,10 @@ jobs:
             echo "Failed to add repository."
             exit 1
           fi
-    
-  push-new-registry:
-    runs-on: ubuntu-latest
-    needs: add-repository
-    steps:
-      - name: Checkout repository
-        uses: actions/checkout@v4
 
       - name: Push to main branch
         uses: EndBug/add-and-commit@v9
+        if: ${{ !cancelled() && !failure() }}
         with:
           add: "./data/hatch_packages_registry.json"
           message: "[ADD] New repository ${{ github.event.inputs.repository_name }}"
