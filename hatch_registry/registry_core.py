@@ -141,9 +141,12 @@ class RegistryCore:
         Returns:
             dict: Repository data or None if not found
         """
+        self.logger.debug(f"Searching for repository {repo_name}")
         for repo in self.registry_data.get("repositories", []):
             if repo.get("name") == repo_name:
                 return repo
+        self.logger.warning(f"Repository {repo_name} not found")
+        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
         return None
     
     def update_repository_timestamp(self, repo_name: str) -> bool:
@@ -198,11 +201,14 @@ class RegistryCore:
         Returns:
             dict: Package data or None if not found
         """
+        self.logger.debug(f"Searching for package {package_name} in repository {repo_name}")
         repo = self.find_repository(repo_name)
         if repo:
             for pkg in repo.get("packages", []):
                 if pkg.get("name") == package_name:
                     return pkg
+        self.logger.warning(f"Package {package_name} not found in repository {repo_name}")
+        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
         return None
     
     def find_version(self, repo_name: str, package_name: str, version: str) -> Optional[dict]:
@@ -217,11 +223,14 @@ class RegistryCore:
         Returns:
             dict: Version data or None if not found
         """
+        self.logger.debug(f"Searching for version {version} for package {package_name} in repository {repo_name}")
         pkg = self.find_package(repo_name, package_name)
         if pkg:
             for ver in pkg.get("versions", []):
                 if ver.get("version") == version:
                     return ver
+        self.logger.warning(f"Version {version} not found for package {package_name} in repository {repo_name}")
+        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
         return None
     
     def remove_package(self, repo_name: str, package_name: str) -> bool:
