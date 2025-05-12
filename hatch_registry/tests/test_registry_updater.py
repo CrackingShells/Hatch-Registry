@@ -48,7 +48,7 @@ class RegistryUpdaterTests(unittest.TestCase):
             json.dump(test_registry, f, indent=2)
             
         # Path to Hatch-Dev packages
-        self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatch-Dev"
+        self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatching-Dev"
         self.assertTrue(self.hatch_dev_path.exists(), 
                        f"Hatch-Dev directory not found at {self.hatch_dev_path}")
         
@@ -118,6 +118,7 @@ class RegistryUpdaterTests(unittest.TestCase):
         # This should work because circular_dep_pkg_2 has not yet a dependency on pkg1
         pkg1_path = self.hatch_dev_path / "circular_dep_pkg_1"
         result, _ = self.registry_updater.validate_and_add_package(self.repo_name, pkg1_path)
+        self.assertTrue(result, "Failed to add first circular dependency package")
 
         # Finally, we are using the other package "circular_dep_pkg_2_next_v" which 
         # is the next version of circular_dep_pkg_2 and has an actual dependency on pkg1
@@ -128,7 +129,7 @@ class RegistryUpdaterTests(unittest.TestCase):
         )
 
         # This should fail due to circular dependency
-        self.assertFalse(result, "Should have failed to add package with circular dependency")
+        self.assertFalse(result, "Should have failed to add new version of circular_dep_pkg_2 with circular dependency to cirular_dep_pkg_1")
 
     def test_add_missing_dependency_package(self):
         """Test adding a package with a missing dependency."""
