@@ -47,19 +47,6 @@ class RegistryUpdater:
             if not self.core.add_package(repo_name, package_metadata):
                 self.logger.error(f"Failed to add package {package_metadata['name']} to repository {repo_name}")
                 return False
-            
-            # Add the first version
-            version_added = self._update_package_registry(
-                repo_name,
-                package_metadata,
-                is_first_version=True,
-            )
-
-            if not version_added:
-                # If adding the version failed, remove the package we just added
-                self.core.remove_package(repo_name, package_metadata['name'])
-                self.logger.error(f"Failed to add version {package_metadata['version']} for package {package_metadata['name']}, package not added")
-                return False
 
             self.logger.info(f"Package {package_metadata['name']} added to repository {repo_name}.")
             return True

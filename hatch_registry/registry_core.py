@@ -331,8 +331,16 @@ class RegistryCore:
             "description": package_metadata.get("description", ""),
             "category": package_metadata.get("category", ""),
             "tags": package_metadata.get("tags", []),
-            "versions": [],
-            "latest_version": ""
+            "versions": [
+                {
+                    "version": package_metadata["version"],
+                    "added_date": datetime.datetime.now().isoformat(),
+                    "hatch_dependencies_added": package_metadata.get("hatch_dependencies", []),
+                    "python_dependencies_added": package_metadata.get("python_dependencies", []),
+                    "compatibility_changes": package_metadata.get("compatibility", {}),
+                }
+            ],
+            "latest_version": package_metadata["version"],
         }
         
         # Add package to repository
@@ -340,6 +348,7 @@ class RegistryCore:
         
         # Update stats
         self.registry_data["stats"]["total_packages"] += 1
+        self.registry_data["stats"]["total_versions"] += 1
         
         # Save registry
         self._save_registry()
