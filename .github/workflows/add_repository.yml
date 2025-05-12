@@ -1,0 +1,71 @@
+name: Add Repository Workflow
+
+on:
+  workflow_dispatch:
+    inputs:
+      repository_name:
+        description: 'Name of the repository to add'
+        required: true
+        default: 'Hatching-Dev'
+      path:
+        description: 'URL path of the repository to add IN CRACKING SHELLS'
+        required: true
+        default: 'Hatching-Dev'
+
+jobs:
+  add-repository:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Install pip
+        uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Hatch-Registry
+        run: |
+          pip install -r requirements.txt
+          pip install .
+    
+      - name: Check that the repository exists on CrackingShells
+        uses: actions/github-script@v6
+        with:
+          script: |
+            try {
+                const response = await github.rest.repos.get({
+                    owner: 'CrackingShells',
+                    repo: '${{ github.event.inputs.path }}'
+                });
+                
+                // Repository exists, response.data contains repository information
+                console.log(`Repository exists: ${response.data.full_name}`);
+            } catch (error) {
+                if (error.status === 404) {
+                    throw new Error('Repository does not exist');
+                }
+                throw new Error(`Error checking repository: ${error.message}`);
+            }
+    
+      - name: Add repository
+        run: |
+          hatch-registry add-repository --repository-name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.path }}
+          if [ $? -ne 0 ]; then
+            echo "Failed to add repository."
+            exit 1
+          fi
+    
+  push-new-registry:
+    runs-on: ubuntu-latest
+    needs: add-repository
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Push to main branch
+        uses: EndBug/add-and-commit@v9
+        with:
+          add: "./data/hatch_packages_registry.json"
+          message: "[ADD] New repository ${{ github.event.inputs.repository_name }}"
