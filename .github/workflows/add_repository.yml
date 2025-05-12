@@ -4,11 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       repository_name:
-        description: 'Name of the repository to add'
-        required: true
-        default: 'Hatching-Dev'
-      path:
-        description: 'URL path of the repository to add IN CRACKING SHELLS'
+        description: 'Name of the repository to add to track in the registry. This name must resolve toi a valid repository in CrackingShells'
         required: true
         default: 'Hatching-Dev'
 
@@ -37,7 +33,7 @@ jobs:
             try {
                 const response = await github.rest.repos.get({
                     owner: 'CrackingShells',
-                    repo: '${{ github.event.inputs.path }}'
+                    repo: '${{ github.event.inputs.repository_name }}'
                 });
                 
                 // Repository exists, response.data contains repository information
@@ -51,7 +47,7 @@ jobs:
     
       - name: Add repository
         run: |
-          hatch-registry add-repository --repository-name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.path }}
+          hatch-registry add-repository --repository-name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.repository_name }}
           if [ $? -ne 0 ]; then
             echo "Failed to add repository."
             exit 1
