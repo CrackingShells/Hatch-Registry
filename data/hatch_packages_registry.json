@@ -1,8 +1,15 @@
 {
   "registry_schema_version": "1.0.0",
-  "last_updated": "2025-05-03T23:57:26Z",
+  "last_updated": "2025-05-12T06:43:13.231546",
   "artifact_base_url": "https://artifacts.crackingshells.org/packages",
-  "repositories": [],
+  "repositories": [
+    {
+      "name": "Hatching-Dev",
+      "url": "https://github.com/CrackingShells/Hatching-Dev",
+      "packages": [],
+      "last_indexed": "2025-05-12T06:43:13.231536"
+    }
+  ],
   "stats": {
     "total_packages": 0,
     "total_versions": 0,
