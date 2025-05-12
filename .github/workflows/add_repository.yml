@@ -4,7 +4,7 @@ on:
   workflow_dispatch:
     inputs:
       repository_name:
-        description: 'Name of the repository to add to track in the registry. This name must resolve toi a valid repository in CrackingShells'
+        description: 'Name of the repository to add to track in the registry. This name must resolve to a valid repository in CrackingShells'
         required: true
         default: 'Hatching-Dev'
 
@@ -49,7 +49,7 @@ jobs:
     
       - name: Add repository
         run: |
-          hatch-registry add-repository --repository-name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.repository_name }}
+          hatch-registry add-repository --name ${{ github.event.inputs.repository_name }} --url https://github.com/CrackingShells/${{ github.event.inputs.repository_name }}
           if [ $? -ne 0 ]; then
             echo "Failed to add repository."
             exit 1
