@@ -47,10 +47,57 @@ jobs:
           pip install .
       
       - name: Validate package
+        id: validation
+        continue-on-error: true
         run: |
           REPO="${{ github.event.client_payload.repository }}"
-          hatch-registry validate-package --repository-name ${REPO##*/} --package-dir ./downloaded-package
-          if [ $? -ne 0 ]; then
-            echo "Package validation failed."
-            exit 1
+          hatch-registry validate-package --repository-name ${REPO##*/} --package-dir ./downloaded-package > validation_log.txt 2>&1
+          if [ $? -eq 0 ]; then
+            echo "result=success" >> $GITHUB_OUTPUT
+          else
+            echo "result=failure" >> $GITHUB_OUTPUT
           fi
+          cat validation_log.txt
+      
+      - name: Comment on PR with validation results
+        uses: actions/github-script@v7
+        with:
+          github-token: ${{ steps.generate-token.outputs.token }}
+          script: |
+            const fs = require('fs');
+            const validationLog = fs.readFileSync('validation_log.txt', 'utf8');
+            const result = '${{ steps.validation.outputs.result }}';
+            
+            const repository = '${{ github.event.client_payload.repository }}';
+            const [owner, repo] = repository.split('/');
+            const prNumber = ${{ github.event.client_payload.pr_number }};
+            
+            let commentBody;
+            if (result === 'success') {
+              commentBody = `## ✅ Package Validation Success\n\nYour package has been successfully validated! It is now ready for review.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`;
+              
+              // Add success label
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels: ['validation-passed']
+              });
+            } else {
+              commentBody = `## ❌ Package Validation Failed\n\nYour package did not pass validation. Please see the log below for details and make the necessary changes.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`;
+              
+              // Add failure label
+              await github.rest.issues.addLabels({
+                owner,
+                repo,
+                issue_number: prNumber,
+                labels: ['validation-failed']
+              });
+            }
+            
+            await github.rest.issues.createComment({
+              owner,
+              repo,
+              issue_number: prNumber,
+              body: commentBody
+            });
