@@ -1,11 +1,11 @@
-name: Add Package Workflow
+name: Add Package to Registry
 
 on:
   repository_dispatch:
     types: [add-package]
 
 jobs:
-  process-message:
+  add-package:
     runs-on: ubuntu-latest
     steps:
       - name: Checkout repository
@@ -18,26 +18,45 @@ jobs:
           app_id: ${{ secrets.HATCH_WORKFLOW_APP_ID }}
           private_key: ${{ secrets.HATCH_WORKFLOW_APP_PRIVATE_KEY }}
       
-      - name: Download package artifact
-        uses: dawidd6/action-download-artifact@v9
+      - name: Install pip
+        uses: actions/setup-python@v5
         with:
-          github_token: ${{ steps.generate-token.outputs.token }}
-          workflow: ${{ github.event.client_payload.workflow_id }}
-          run_id: ${{ github.event.client_payload.run_id }}
-          name: ${{ github.event.client_payload.artifact_name }}
-          repo: ${{ github.event.client_payload.repository }}
-          path: downloaded-package
-      
-      - name: Process package 
+          python-version: '3.12'
+          cache: 'pip'
+
+      - name: Install Hatch-Registry
         run: |
-          echo "Processing package: ${{ github.event.client_payload.package_name }}"
-          echo "Package contents:"
-          ls -la downloaded-package
+          pip install -r requirements.txt
+          pip install .
+      
+      - name: Download package release
+        run: |
+          REPO="${{ github.event.client_payload.repository }}"
+          TAG="${{ github.event.client_payload.release_tag }}"
+          PACKAGE="${{ github.event.client_payload.package_name }}"
+          VERSION="${{ github.event.client_payload.version }}"
           
-          # Your package processing logic here
-          # For example:
-          # - Copy files to registry directory
-          # - Update package index
-          # - Generate documentation
+          # Download the release asset
+          curl -L -o ${PACKAGE}-${VERSION}.zip \
+            -H "Authorization: token ${{ steps.generate-token.outputs.token }}" \
+            https://api.github.com/repos/${REPO}/releases/tags/${TAG}/assets
+      
+      - name: Add package to registry
+        run: |
+          PACKAGE="${{ github.event.client_payload.package_name }}"
+          VERSION="${{ github.event.client_payload.version }}"
+          REPO="${{ github.event.client_payload.repository }}"
           
-          echo "Package successfully registered!"
+          hatch-registry add-package \
+            --name ${PACKAGE} \
+            --version ${VERSION} \
+            --source-repo ${REPO} \
+            --package-file ${PACKAGE}-${VERSION}.zip
+      
+      - name: Commit changes to registry
+        run: |
+          git config --local user.email "action@github.com"
+          git config --local user.name "GitHub Action"
+          git add registry.json
+          git commit -m "Add package ${{ github.event.client_payload.package_name }} v${{ github.event.client_payload.version }}"
+          git push
