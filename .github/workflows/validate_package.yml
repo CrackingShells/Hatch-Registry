@@ -53,9 +53,9 @@ jobs:
           REPO="${{ github.event.client_payload.repository }}"
           hatch-registry validate-package --repository-name ${REPO##*/} --package-dir ./downloaded-package > validation_log.txt 2>&1
           if [ $? -eq 0 ]; then
-            echo "result=success" >> $GITHUB_OUTPUT
+            echo "validation_result=success" >> $GITHUB_OUTPUT
           else
-            echo "result=failure" >> $GITHUB_OUTPUT
+            echo "validation_result=failure" >> $GITHUB_OUTPUT
           fi
           cat validation_log.txt
       
@@ -66,14 +66,14 @@ jobs:
           script: |
             const fs = require('fs');
             const validationLog = fs.readFileSync('validation_log.txt', 'utf8');
-            const result = '${{ steps.validation.outputs.result }}';
+            const validation_result = '${{ steps.validation.outputs.validation_result }}';
             
             const repository = '${{ github.event.client_payload.repository }}';
             const [owner, repo] = repository.split('/');
             const prNumber = ${{ github.event.client_payload.pr_number }};
             
             let commentBody;
-            if (result === 'success') {
+            if (validation_result === 'success') {
               commentBody = `## ✅ Package Validation Success\n\nYour package has been successfully validated! It is now ready for review.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`;
               
               // Add success label
