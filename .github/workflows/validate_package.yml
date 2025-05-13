@@ -81,7 +81,7 @@ jobs:
                 owner,
                 repo,
                 issue_number: prNumber,
-                labels: ['validation-passed']
+                labels: ['validation-passed', 'ready-for-review']
               });
             } else {
               commentBody = `## ❌ Package Validation Failed\n\nYour package did not pass validation. Please see the log below for details and make the necessary changes.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`;
