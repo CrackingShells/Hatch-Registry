@@ -307,14 +307,18 @@ class RegistryCore:
         self.logger.warning(f"Version {version} not found in package {package_name}")
         return False
     
-    def add_package(self, repo_name: str, package_metadata: Dict[str, Any]) -> bool:
+    def add_package(self, repo_name: str, package_metadata: Dict[str, Any],
+                    author: Optional[Dict[str, str]] = None,
+                    ) -> bool:
         """
         Add a new package to the repository.
         
         Args:
             repo_name: Repository name
             package_metadata: Package metadata dictionary containing at least 'name' and description fields
-            
+            author: Optional dictionary containing author information with GitHub username and email. If not
+                provided, tries to load from package metadata, although it might just be 'name' and 'email'.
+
         Returns:
             bool: True if the package was added successfully
         """
@@ -333,15 +337,23 @@ class RegistryCore:
         if self.find_package(repo_name, package_name):
             self.logger.warning(f"Package {package_name} already exists in repository {repo_name}")
             return False
-            
+        
+        # Ensure author is provided
+        if not author:
+            author = {
+                "GitHubID": package_metadata.get("author").get("name"),
+                "email": package_metadata.get("author").get("email"),
+            }
+
         # Create package entry
         package = {
             "name": package_name,
             "description": package_metadata.get("description", ""),
-            "category": package_metadata.get("category", ""),
             "tags": package_metadata.get("tags", []),
             "versions": [
                 {
+                    "author": author,
+                    "release_uri": f"https://github.com/CrackingShells/{repo_name}/releases/download/{package_name}-v{package_metadata['version']}/{package_name}-v{package_metadata['version']}.zip",
                     "version": package_metadata["version"],
                     "added_date": datetime.datetime.now().isoformat(),
                     "hatch_dependencies_added": package_metadata.get("hatch_dependencies", []),
@@ -383,7 +395,7 @@ class RegistryCore:
             return False
             
         # Update allowed fields
-        allowed_fields = ["description", "category", "tags"]
+        allowed_fields = ["description", "tags"]
         updated = False
         
         for field in allowed_fields:
