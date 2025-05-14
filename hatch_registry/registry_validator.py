@@ -59,6 +59,38 @@ class RegistryValidator:
             self.logger.error(f"Error during package validation: {e}")
             return False, {"valid": False, "errors": [str(e)], "metadata": None}
     
+    def validate_registry(self) -> Tuple[bool, dict]:
+        """
+        Validate the entire registry.
+        
+        Returns:
+            Tuple of (is_valid, results)
+        """
+        self.logger.debug("Validating entire registry")
+        
+        try:
+            # Initialize validator with registry data for dependency resolution
+            validator = HatchPackageValidator(
+                allow_local_dependencies=False,
+                registry_data=self.registry_data)
+            
+            # Run the validation
+            is_valid, errors_list = validator.validate_registry_metadata(metadata=self.registry_data)
+            
+            # Check if validation passed
+            if is_valid:
+                self.logger.info("Registry validation successful")
+                return True, errors_list
+            else:
+                self.logger.error("Registry validation failed")
+                for err in errors_list:
+                    self.logger.error(f"  Error: {err}")
+                return False, errors_list
+                
+        except Exception as e:
+            self.logger.error(f"Error during registry validation: {e}")
+            return False, [e.message]
+    
     def _log_validation_errors(self, results: dict, message: str) -> None:
         """
         Log validation errors in a structured format.

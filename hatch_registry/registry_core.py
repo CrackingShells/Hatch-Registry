@@ -6,6 +6,8 @@ import datetime
 from pathlib import Path
 from typing import Dict, Any, List, Optional, Tuple
 
+from .registry_diff import RegistryDiff
+
 class RegistryCoreError(Exception):
     """Base exception for registry core operations."""
     pass
@@ -145,8 +147,7 @@ class RegistryCore:
         for repo in self.registry_data.get("repositories", []):
             if repo.get("name") == repo_name:
                 return repo
-        self.logger.warning(f"Repository {repo_name} not found")
-        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
+        self.logger.debug(f"Repository {repo_name} not found")
         return None
     
     def update_repository_timestamp(self, repo_name: str) -> bool:
@@ -207,8 +208,7 @@ class RegistryCore:
             for pkg in repo.get("packages", []):
                 if pkg.get("name") == package_name:
                     return pkg
-        self.logger.warning(f"Package {package_name} not found in repository {repo_name}")
-        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
+        self.logger.debug(f"Package {package_name} not found in repository {repo_name}")
         return None
     
     def find_version(self, repo_name: str, package_name: str, version: str) -> Optional[dict]:
@@ -229,8 +229,7 @@ class RegistryCore:
             for ver in pkg.get("versions", []):
                 if ver.get("version") == version:
                     return ver
-        self.logger.warning(f"Version {version} not found for package {package_name} in repository {repo_name}")
-        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
+        self.logger.debug(f"Version {version} not found for package {package_name} in repository {repo_name}")
         return None
     
     def remove_package(self, repo_name: str, package_name: str) -> bool:
@@ -307,14 +306,18 @@ class RegistryCore:
         self.logger.warning(f"Version {version} not found in package {package_name}")
         return False
     
-    def add_package(self, repo_name: str, package_metadata: Dict[str, Any]) -> bool:
+    def add_package(self, repo_name: str, package_metadata: Dict[str, Any],
+                    author: Optional[Dict[str, str]] = None,
+                    ) -> bool:
         """
         Add a new package to the repository.
         
         Args:
             repo_name: Repository name
             package_metadata: Package metadata dictionary containing at least 'name' and description fields
-            
+            author: Optional dictionary containing author information with GitHub username and email. If not
+                provided, tries to load from package metadata, although it might just be 'name' and 'email'.
+
         Returns:
             bool: True if the package was added successfully
         """
@@ -333,15 +336,23 @@ class RegistryCore:
         if self.find_package(repo_name, package_name):
             self.logger.warning(f"Package {package_name} already exists in repository {repo_name}")
             return False
-            
+        
+        # Ensure author is provided
+        if not author:
+            author = {
+                "GitHubID": package_metadata.get("author").get("name"),
+                "email": package_metadata.get("author").get("email"),
+            }
+
         # Create package entry
         package = {
             "name": package_name,
             "description": package_metadata.get("description", ""),
-            "category": package_metadata.get("category", ""),
             "tags": package_metadata.get("tags", []),
             "versions": [
                 {
+                    "author": author,
+                    "release_uri": f"https://github.com/CrackingShells/{repo_name}/releases/download/{package_name}-v{package_metadata['version']}/{package_name}-v{package_metadata['version']}.zip",
                     "version": package_metadata["version"],
                     "added_date": datetime.datetime.now().isoformat(),
                     "hatch_dependencies_added": package_metadata.get("hatch_dependencies", []),
@@ -383,7 +394,7 @@ class RegistryCore:
             return False
             
         # Update allowed fields
-        allowed_fields = ["description", "category", "tags"]
+        allowed_fields = ["description", "tags"]
         updated = False
         
         for field in allowed_fields:
@@ -396,56 +407,6 @@ class RegistryCore:
             self.logger.info(f"Updated metadata for package {package_name} in repository {repo_name}")
             
         return updated
-    
-    def add_version(self, repo_name: str, package_name: str, version_data: Dict[str, Any]) -> bool:
-        """
-        Add a new version of a package.
-        
-        Args:
-            repo_name: Repository name
-            package_name: Package name
-            version_data: Version data dictionary containing at least 'version' field
-            
-        Returns:
-            bool: True if the version was added successfully
-        """
-        # Find the package
-        pkg = self.find_package(repo_name, package_name)
-        if not pkg:
-            self.logger.error(f"Package {package_name} not found in repository {repo_name}")
-            return False
-            
-        # Check version exists
-        version = version_data.get("version")
-        if not version:
-            self.logger.error("Version data missing 'version' field")
-            return False
-            
-        # Check if version already exists
-        if self.find_version(repo_name, package_name, version):
-            self.logger.warning(f"Version {version} already exists for package {package_name}")
-            return False
-            
-        # Ensure required fields
-        if "added_date" not in version_data:
-            version_data["added_date"] = datetime.datetime.now().isoformat()
-            
-        # Add version to the package
-        pkg["versions"].append(version_data)
-        
-        # Update latest version if appropriate
-        if not pkg["latest_version"] or pkg["latest_version"] < version:
-            pkg["latest_version"] = version
-            
-        # Update stats
-        self.registry_data["stats"]["total_versions"] += 1
-        if "artifacts" in version_data:
-            self.registry_data["stats"]["total_artifacts"] += len(version_data.get("artifacts", []))
-            
-        # Save registry
-        self._save_registry()
-        self.logger.info(f"Added version {version} to package {package_name}")
-        return True
     
     def update_version(self, repo_name: str, package_name: str, version: str, updates: Dict[str, Any]) -> bool:
         """
@@ -506,34 +467,141 @@ class RegistryCore:
             self.logger.error(f"Failed to load metadata: {e}")
             return {}
     
-    def update_package_version(self, repo_name: str, package_name: str, version_data: Dict[str, Any]) -> bool:
+
+    def _prepare_registry_version_diff_data(self, repo_name: str, package_metadata: dict) -> Dict[str, Any]:
+        """
+        Prepare version data for storage in the registry.
+        
+        Args:
+            repo_name: Repository name
+            package_metadata: Package metadata
+            
+        Returns:
+            Dictionary containing version data
+        """
+
+        # Get dependencies from the package metadata
+        hatch_dependencies = package_metadata.get("hatch_dependencies", [])
+        python_dependencies = package_metadata.get("python_dependencies", [])
+        compatibility = package_metadata.get("compatibility", {})
+
+        # Initialize dependency and compatibility changes
+        hatch_dependencies_added, hatch_dependencies_removed, hatch_dependencies_modified = [], [], []
+        python_dependencies_added, python_dependencies_removed, python_dependencies_modified = [], [], []
+        compatibility_changes = {}
+            
+        # Get the latest version info
+        pkg = self.find_package(repo_name, package_metadata['name'])
+        
+        # Add the base version reference
+        diff_data = {
+            "base_version": pkg["latest_version"]
+        }
+
+        # Get the diff info from the latest package version
+        latest_pkg_diff_info = pkg["versions"][-1]
+
+        # Work on the diff data
+        reg_diff = RegistryDiff(self.registry_data)
+
+        # Reconstruct the dependencies and compatibility from the latest version
+        latest_pkg_all_info = reg_diff.reconstruct_package_version(pkg, latest_pkg_diff_info)
+                
+        # Compute diffs for dependencies
+        hatch_dependencies_added, hatch_dependencies_removed, hatch_dependencies_modified = reg_diff.compute_dependency_diff(
+            latest_pkg_all_info["hatch_dependencies"],
+            hatch_dependencies
+        )
+        
+        # Compute diffs for Python dependencies
+        python_dependencies_added, python_dependencies_removed, python_dependencies_modified = reg_diff.compute_python_dependency_diff(
+            latest_pkg_all_info["python_dependencies"],
+            python_dependencies
+        )
+
+        # Compute diffs for compatibility
+        compatibility_changes = reg_diff.compute_compatibility_diff(
+            latest_pkg_all_info["compatibility"],
+            compatibility
+        )
+        
+        # Add differential data - using "hatch_dependencies" key to match package_validator.py
+        if hatch_dependencies_added:
+            diff_data["hatch_dependencies_added"] = hatch_dependencies_added
+        if hatch_dependencies_removed:
+            diff_data["hatch_dependencies_removed"] = hatch_dependencies_removed
+        if hatch_dependencies_modified:
+            diff_data["hatch_dependencies_modified"] = hatch_dependencies_modified
+
+        if python_dependencies_added:
+            diff_data["python_dependencies_added"] = python_dependencies_added
+        if python_dependencies_removed:
+            diff_data["python_dependencies_removed"] = python_dependencies_removed
+        if python_dependencies_modified:
+            diff_data["python_dependencies_modified"] = python_dependencies_modified
+            
+        if compatibility_changes:
+            diff_data["compatibility_changes"] = compatibility_changes
+        
+        return diff_data
+
+    def add_new_package_version(self, repo_name: str, package_metadata: Dict[str, Any],
+                                author: Optional[Dict[str, str]] = None
+                                ) -> bool:
         """
         Update or add a version of a package.
         
         Args:
             repo_name: Repository name
-            package_name: Package name
-            version_data: Version data dictionary
-            
+            package_metadata: Package metadata dictionary
+            author: Optional dictionary containing author information
+                with GitHub username and email. If not provided, tries to load from package metadata.
         Returns:
             bool: True if successful
         """
-        version = version_data.get("version")
-        if not version:
-            self.logger.error("Version data missing 'version' field")
+        # Check if repository exists
+        repo = self.find_repository(repo_name)
+        if not repo:
+            self.logger.error(f"Repository {repo_name} not found")
             return False
+
+        # Check if the version already exists (basic validation)
+        if self.find_version(repo_name, package_metadata['name'], package_metadata['version']):
+            self.logger.error(f"Version {package_metadata['version']} of package {package_metadata['name']} already exists")
+            return False
+        
+        # Ensure author is provided
+        if not author:
+            author = {
+                "GitHubID": package_metadata.get("author").get("name"),
+                "email": package_metadata.get("author").get("email"),
+            }
+        
+        version_data = {
+            "author": author,
+            "release_uri": f"https://github.com/CrackingShells/{repo_name}/releases/download/{package_metadata['name']}-v{package_metadata['version']}/{package_metadata['name']}-v{package_metadata['version']}.zip",
+            "version": package_metadata['version'],
+            "added_date": datetime.datetime.now().isoformat()
+        }
+
+        # Compute dependency diffs
+        registry_version_diff_data = self._prepare_registry_version_diff_data(repo_name, package_metadata)
+
+        self.logger.debug(f"Version data prepared for {package_metadata['name']}: {registry_version_diff_data}")
+
+        version_data.update(registry_version_diff_data)
+        
+        # Add new version to package
+        pkg = self.find_package(repo_name, package_metadata['name'])
+        pkg["versions"].append(version_data) # this will propagate back to self.registry_data by reference
+        pkg["latest_version"] = package_metadata['version']
             
-        # Check if version exists
-        existing = self.find_version(repo_name, package_name, version)
-        if existing:
-            # Update existing version
-            for key, value in version_data.items():
-                if key != "version":  # Don't change the version string
-                    existing[key] = value
-            self.logger.info(f"Updated version {version} of package {package_name}")
-        else:
-            # Add as new version
-            return self.add_version(repo_name, package_name, version_data)
-            
+        # Update stats
+        self.registry_data["stats"]["total_versions"] += 1
+        
+        self.logger.debug(f"Current registry is: {json.dumps(self.registry_data, indent=2)}")
+
+        # Save registry
         self._save_registry()
+
         return True

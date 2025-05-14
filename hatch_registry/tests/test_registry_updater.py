@@ -47,10 +47,10 @@ class RegistryUpdaterTests(unittest.TestCase):
         with open(self.registry_path, 'w') as f:
             json.dump(test_registry, f, indent=2)
             
-        # Path to Hatch-Dev packages
+        # Path to Hatching-Dev packages
         self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatching-Dev"
         self.assertTrue(self.hatch_dev_path.exists(), 
-                       f"Hatch-Dev directory not found at {self.hatch_dev_path}")
+                       f"Hatching-Dev directory not found at {self.hatch_dev_path}")
         
         # Initialize registry updater
         self.registry_updater = RegistryUpdater(self.registry_path)
@@ -85,6 +85,10 @@ class RegistryUpdaterTests(unittest.TestCase):
         stats = self.registry_updater.core.registry_data["stats"]
         self.assertEqual(stats["total_packages"], 1)
         self.assertEqual(stats["total_versions"], 1)
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding a valid package")
     
     def test_add_simple_dependency_package(self):
         """Test adding a package with simple dependencies."""        # First add the base package that will be a dependency
@@ -105,6 +109,10 @@ class RegistryUpdaterTests(unittest.TestCase):
 
         self.assertIsNotNone(base_pkg, "Base package not found in registry")
         self.assertIsNotNone(dep_pkg, "Dependent package not found in registry")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding a chain of simple dependencies")
     
     def test_add_circular_dependency_package(self):
         """Test adding packages with circular dependencies."""        # First add circular_dep_pkg_2 which don't have any hatch_dependency from the start
@@ -131,21 +139,27 @@ class RegistryUpdaterTests(unittest.TestCase):
         # This should fail due to circular dependency
         self.assertFalse(result, "Should have failed to add new version of circular_dep_pkg_2 with circular dependency to cirular_dep_pkg_1")
 
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed refusing circular dependency")
+
     def test_add_missing_dependency_package(self):
         """Test adding a package with a missing dependency."""
         # Try to add missing_dep_pkg which has a dependency that doesn't exist
         pkg_path = self.hatch_dev_path / "missing_dep_pkg"
-        if pkg_path.exists():
-            result, _ = self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
-            
-            # This should fail because of missing dependency
-            self.assertFalse(result, "Should have failed to add package with missing dependency")
-            
-            # Verify the package is not in the registry
-            pkg = self.registry_updater.core.find_package(self.repo_name, "missing_dep_pkg")
-            self.assertIsNone(pkg, "Package with missing dependency should not be in registry")
-        else:
-            logger.warning(f"Missing dependency test package not found: {pkg_path}")
+        
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
+        
+        # This should fail because of missing dependency
+        self.assertFalse(result, "Should have failed to add package with missing dependency")
+        
+        # Verify the package is not in the registry
+        pkg = self.registry_updater.core.find_package(self.repo_name, "missing_dep_pkg")
+        self.assertIsNone(pkg, "Package with missing dependency should not be in registry")
+        
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding packages")
     
     def test_add_complex_dependencies(self):
         """Test adding a package with complex dependencies."""        # First add all the base packages
@@ -161,20 +175,22 @@ class RegistryUpdaterTests(unittest.TestCase):
         # Now add the complex dependency package
         complex_pkg_path = self.hatch_dev_path / "complex_dep_pkg"
         
-        if complex_pkg_path.exists():
-            result, _ = self.registry_updater.validate_and_add_package(self.repo_name, complex_pkg_path)
-            
-            # This should succeed because all dependencies are satisfied
-            self.assertTrue(result, "Failed to add package with complex dependencies")
-            
-            # Verify the package is in the registry
-            pkg = self.registry_updater.core.find_package(self.repo_name, "complex_dep_pkg")
-            self.assertIsNotNone(pkg, "Complex dependency package not found in registry")
-        else:
-            logger.warning(f"Complex dependency test package not found: {complex_pkg_path}")
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, complex_pkg_path)
+        
+        # This should succeed because all dependencies are satisfied
+        self.assertTrue(result, "Failed to add package with complex dependencies")
+        
+        # Verify the package is in the registry
+        pkg = self.registry_updater.core.find_package(self.repo_name, "complex_dep_pkg")
+        self.assertIsNotNone(pkg, "Complex dependency package not found in registry")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding complex dependencies")
     
     def test_add_version_dependency(self):
-        """Test adding a package with version-specific dependencies."""        # First add the base package
+        """Test adding a package with version-specific dependencies."""        
+        # First add the base package
         base_pkg_path = self.hatch_dev_path / "base_pkg_1"
         if not base_pkg_path.exists():
             logger.warning(f"Base package not found: {base_pkg_path}")
@@ -186,16 +202,18 @@ class RegistryUpdaterTests(unittest.TestCase):
         # Then add a package with version-specific dependency
         version_dep_pkg_path = self.hatch_dev_path / "version_dep_pkg"
         
-        if version_dep_pkg_path.exists():
-            result, _ = self.registry_updater.validate_and_add_package(self.repo_name, version_dep_pkg_path)
-            
-            # Check if the addition was successful
-            self.assertTrue(result, "Failed to add package with version-specific dependency")
-        else:
-            logger.warning(f"Version dependency test package not found: {version_dep_pkg_path}")
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, version_dep_pkg_path)
+        
+        # Check if the addition was successful
+        self.assertTrue(result, "Failed to add package with version-specific dependency")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed adding version-specific dependencies")
     
     def test_add_duplicate_package_version(self):
-        """Test adding the same package version twice."""        # Add a package
+        """Test adding the same package version twice."""        
+        # Add a package
         pkg_path = self.hatch_dev_path / "arithmetic_pkg"
         if not pkg_path.exists():
             logger.warning(f"Arithmetic package not found: {pkg_path}")
@@ -215,6 +233,156 @@ class RegistryUpdaterTests(unittest.TestCase):
         self.assertEqual(stats["total_packages"], 1)
         self.assertEqual(stats["total_versions"], 1)
 
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry after refusing duplicate package.")    
+    
+    def test_add_base_pkg_1_1_0(self):
+        """Test adding a new version of an existing package."""
+        # First add the original version
+        base_pkg_path = self.hatch_dev_path / "base_pkg_1"
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, base_pkg_path)
+        self.assertTrue(result, "Failed to add base package v1.0.0")
+        
+        # Verify the original package is in the registry
+        pkg = self.registry_updater.core.find_package(self.repo_name, "base_pkg_1")
+        self.assertIsNotNone(pkg, "Package not found in registry")
+        self.assertEqual(pkg["latest_version"], "1.0.0", "Original version should be 1.0.0")
+        
+        # Now add the new version
+        new_version_path = self.hatch_dev_path / "base_pkg_1_1_0"
+        result, validation_results = self.registry_updater.validate_and_add_package(self.repo_name, new_version_path)
+        
+        # Check that the new version was added successfully
+        self.assertTrue(result, "Failed to add new version of package")
+        
+        # Verify the package is updated in the registry
+        pkg = self.registry_updater.core.find_package(self.repo_name, "base_pkg_1")
+        self.assertIsNotNone(pkg, "Package not found in registry after update")
+        self.assertEqual(pkg["latest_version"], "1.1.0", "Latest version should be updated to 1.1.0")
+        
+        # Verify version data in registry
+        version = self.registry_updater.core.find_version(self.repo_name, "base_pkg_1", "1.1.0")
+        self.assertIsNotNone(version, "New version not found in registry")
+        self.assertEqual(version["version"], "1.1.0")
+        self.assertTrue("base_version" in version, "Base version reference should be present")
+        self.assertEqual(version["base_version"], "1.0.0", "Base version should be 1.0.0")
+        
+        # Verify that the metadata for compatibility changes is correct
+        self.assertTrue("compatibility_changes" in version, "Compatibility changes should be recorded")
+        compatibility_changes = version.get("compatibility_changes", [])
+        self.assertEqual(compatibility_changes["python"], ">=3.8", "Python compatibility should be >=3.8")
+        
+        # Verify stats were updated
+        stats = self.registry_updater.core.registry_data["stats"]
+        self.assertEqual(stats["total_packages"], 1, "Should still have 1 package")
+        self.assertEqual(stats["total_versions"], 2, "Should now have 2 versions")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding new version")
+    
+    def test_add_base_pkg_1_2_0(self):
+        """Test adding a new version that introduces a new python dependency."""
+        # Add the original version
+        base_pkg_path = self.hatch_dev_path / "base_pkg_1"
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, base_pkg_path)
+        self.assertTrue(result, "Failed to add base package v1.0.0")
+        
+        # Add version 1.1.0
+        new_version_path = self.hatch_dev_path / "base_pkg_1_1_0"
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, new_version_path)
+        self.assertTrue(result, "Failed to add new version of package")
+        
+        # Add version 1.2.0
+        new_version_path = self.hatch_dev_path / "base_pkg_1_2_0"
+        result, validation_results = self.registry_updater.validate_and_add_package(self.repo_name, new_version_path)
+        self.assertTrue(result, "Failed to add new version of package")
+        
+        # Verify the package is updated in the registry
+        pkg = self.registry_updater.core.find_package(self.repo_name, "base_pkg_1")
+        self.assertIsNotNone(pkg, "Package not found in registry after update")
+        self.assertEqual(pkg["latest_version"], "1.2.0", "Latest version should be updated to 1.2.0")
+
+        # Verify version data in registry
+        version = self.registry_updater.core.find_version(self.repo_name, "base_pkg_1", "1.2.0")
+        self.assertIsNotNone(version, "New version not found in registry")
+        self.assertEqual(version["version"], "1.2.0")
+        self.assertTrue("base_version" in version, "Base version reference should be present")
+        self.assertEqual(version["base_version"], "1.1.0", "Base version should be 1.1.0")
+
+        # Check new Python dependency is recorded
+        self.assertTrue("python_dependencies_added" in version, "Python dependencies added should be recorded")
+        
+        # Verify that the metadata for Python dependencies is correct
+        python_deps_added = version.get("python_dependencies_added", [])
+        self.assertEqual(len(python_deps_added), 1, "Should have added one Python dependency")
+        self.assertEqual(python_deps_added[0]["name"], "requests", "Should have added requests dependency")
+        self.assertEqual(python_deps_added[0]["version_constraint"], ">=2.25.0", "Version constraint should match")
+        
+        # Verify stats were updated
+        stats = self.registry_updater.core.registry_data["stats"]
+        self.assertEqual(stats["total_packages"], 1, "Should still have 1 package")
+        self.assertEqual(stats["total_versions"], 3, "Should now have 3 versions")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding new version")
+    
+    def test_add_base_pkg_1_3_0(self):
+        "Test adding a new version that removes the python dependency and the tool."
+
+        # Add the original version
+        base_pkg_path = self.hatch_dev_path / "base_pkg_1"
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, base_pkg_path)
+        self.assertTrue(result, "Failed to add base package v1.0.0")
+
+        # Add version 1.1.0
+        new_version_path = self.hatch_dev_path / "base_pkg_1_1_0"
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, new_version_path)
+        self.assertTrue(result, "Failed to add new version of package")
+
+        # Add version 1.2.0
+        new_version_path = self.hatch_dev_path / "base_pkg_1_2_0"
+        result, _ = self.registry_updater.validate_and_add_package(self.repo_name, new_version_path)
+        self.assertTrue(result, "Failed to add new version of package")
+
+        # Add version 1.3.0
+        new_version_path = self.hatch_dev_path / "base_pkg_1_3_0"
+        result, validation_results = self.registry_updater.validate_and_add_package(self.repo_name, new_version_path)
+        self.assertTrue(result, "Failed to add new version of package")
+
+        # Verify the package is updated in the registry
+        pkg = self.registry_updater.core.find_package(self.repo_name, "base_pkg_1")
+        self.assertIsNotNone(pkg, "Package not found in registry after update")
+        self.assertEqual(pkg["latest_version"], "1.3.0", "Latest version should be updated to 1.3.0")
+
+        # Verify version data in registry
+        version = self.registry_updater.core.find_version(self.repo_name, "base_pkg_1", "1.3.0")
+        self.assertIsNotNone(version, "New version not found in registry")
+        self.assertEqual(version["version"], "1.3.0")
+        self.assertTrue("base_version" in version, "Base version reference should be present")
+        self.assertEqual(version["base_version"], "1.2.0", "Base version should be 1.2.0")
+
+        # Check removed Python dependency is recorded
+        self.assertTrue("python_dependencies_removed" in version, "Python dependencies removed should be recorded")
+        
+        # Verify that the metadata for Python dependencies is correct
+        # Compared to adding a new dependency, we only keep the list of the names of deps that were removed.
+        # We don't care about the version constraints, since, anyway, we are removing them.
+        python_deps_removed = version.get("python_dependencies_removed", [])
+        self.assertEqual(len(python_deps_removed), 1, "Should have removed one Python dependency")
+        self.assertEqual(python_deps_removed[0], "requests", "Should have removed requests dependency")
+
+        # Verify stats were updated
+        stats = self.registry_updater.core.registry_data["stats"]
+        self.assertEqual(stats["total_packages"], 1, "Should still have 1 package")
+        self.assertEqual(stats["total_versions"], 4, "Should now have 4 versions")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding new version")
+
 
 class RegistryIntegrationTests(unittest.TestCase):
     """Integration tests for the registry functionality with real packages."""
@@ -225,17 +393,17 @@ class RegistryIntegrationTests(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.registry_path = Path(self.temp_dir) / "integration_registry.json"
                 
-        # Path to Hatch-Dev packages
-        self.hatch_dev_path = Path(__file__).parent.parent / "Hatch-Dev"
+        # Path to Hatching-Dev packages
+        self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatching-Dev"
         self.assertTrue(self.hatch_dev_path.exists(), 
-                        f"Hatch-Dev directory not found at {self.hatch_dev_path}")
+                        f"Hatching-Dev directory not found at {self.hatch_dev_path}")
         
         # Initialize registry updater
         self.registry_updater = RegistryUpdater(self.registry_path)
         
         # Add a test repository
-        self.repo_name = "hatch-dev"
-        self.registry_updater.core.add_repository(self.repo_name, "file:///hatch-dev")
+        self.repo_name = "hatching-dev"
+        self.registry_updater.core.add_repository(self.repo_name, "file:///hatching-dev")
     
     def tearDown(self):
         """Clean up test environment after each test."""
@@ -259,21 +427,24 @@ class RegistryIntegrationTests(unittest.TestCase):
             if not pkg_path.exists():
                 logger.warning(f"Package not found: {pkg_path}")
                 continue
-            
-            logger.info(f"Adding package: {pkg_name}")
-            result, _ = self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
-            logger.info(f"Result: {result}")
+
+            is_valid, validation_results = self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
+            self.assertTrue(is_valid, f"Failed to add package: {pkg_name}.")
             
             # Verify package was added
             pkg = self.registry_updater.core.find_package(self.repo_name, pkg_name)
             self.assertIsNotNone(pkg, f"Package {pkg_name} should have been added to registry")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding packages")
     
     def test_failing_packages(self):
         """Test packages that should fail to add."""
         # First add some base packages for dependency resolution
         base_packages = [
-            "base_pkg_1",
-            "circular_dep_pkg_1"
+            "simple_dep_pkg",
+            "complex_dep_pkg"
         ]
         
         for pkg_name in base_packages:
@@ -281,60 +452,18 @@ class RegistryIntegrationTests(unittest.TestCase):
             if not pkg_path.exists():
                 logger.warning(f"Base package not found: {pkg_path}")
                 continue
-                
-            self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
-        
-        # Create a modified version of circular_dep_pkg_2 with a circular dependency
-        circular_pkg_path = None
-        temp_dir = tempfile.mkdtemp()
-        try:
-            pkg2_path = self.hatch_dev_path / "circular_dep_pkg_2"
-            if pkg2_path.exists():
-                modified_pkg_path = Path(temp_dir) / "circular_dep_pkg_2_modified"
-                shutil.copytree(pkg2_path, modified_pkg_path)
-                
-                # Modify metadata to add circular dependency
-                metadata_path = modified_pkg_path / "hatch_metadata.json"
-                with open(metadata_path, 'r') as f:
-                    metadata = json.load(f)
-                
-                if "hatch_dependencies" not in metadata:
-                    metadata["hatch_dependencies"] = []
-                    
-                metadata["hatch_dependencies"].append({
-                    "name": "circular_dep_pkg_1",
-                    "version_constraint": "",
-                    "type": "remote"
-                })
-                
-                with open(metadata_path, 'w') as f:
-                    json.dump(metadata, f, indent=2)
-                
-                circular_pkg_path = modified_pkg_path
-        
-            # List of packages that should fail to add
-            failing_packages = [
-                (circular_pkg_path, "Circular dependency", "circular_dep_pkg_2") if circular_pkg_path else None,
-                (self.hatch_dev_path / "missing_dep_pkg", "Missing dependency", "missing_dep_pkg")
-            ]
             
-            # Try to add each package
-            for package_info in failing_packages:
-                if not package_info:
-                    continue
-                    
-                pkg_path, reason, pkg_name = package_info
-                if not pkg_path.exists():
-                    logger.warning(f"Package not found: {pkg_path}")
-                    continue
-                
-                logger.info(f"Testing failing package: {pkg_name} (reason: {reason})")
-                result, _ = self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
-                logger.info(f"Result (should be False): {result}")
-                self.assertFalse(result, f"Package {pkg_name} should have failed to add")
-        finally:
-            shutil.rmtree(temp_dir)
+            logger.info(f"Adding base package: {pkg_name}")
+            result, _ = self.registry_updater.validate_and_add_package(self.repo_name, pkg_path)
+            
+            # this should fail because all packages have something missing
+            self.assertFalse(result, f"Package {pkg_name} should not have been added to registry")
 
+        self.assertEqual(len(self.registry_updater.core.registry_data["repositories"][0]["packages"]), 0, "No packages should have been added to the registry")
+
+        # Finally, test for the integrity of the registry
+        is_valid, validation_results = self.registry_updater.validator.validate_registry()
+        self.assertTrue(is_valid, "Registry validation failed after adding packages")   
 
 if __name__ == '__main__':
     unittest.main()
