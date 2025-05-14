@@ -145,8 +145,7 @@ class RegistryCore:
         for repo in self.registry_data.get("repositories", []):
             if repo.get("name") == repo_name:
                 return repo
-        self.logger.warning(f"Repository {repo_name} not found")
-        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
+        self.logger.debug(f"Repository {repo_name} not found")
         return None
     
     def update_repository_timestamp(self, repo_name: str) -> bool:
@@ -207,8 +206,7 @@ class RegistryCore:
             for pkg in repo.get("packages", []):
                 if pkg.get("name") == package_name:
                     return pkg
-        self.logger.warning(f"Package {package_name} not found in repository {repo_name}")
-        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
+        self.logger.debug(f"Package {package_name} not found in repository {repo_name}")
         return None
     
     def find_version(self, repo_name: str, package_name: str, version: str) -> Optional[dict]:
@@ -229,8 +227,7 @@ class RegistryCore:
             for ver in pkg.get("versions", []):
                 if ver.get("version") == version:
                     return ver
-        self.logger.warning(f"Version {version} not found for package {package_name} in repository {repo_name}")
-        self.logger.debug(f"Registry data: {json.dumps(self.registry_data, indent=2)}")
+        self.logger.debug(f"Version {version} not found for package {package_name} in repository {repo_name}")
         return None
     
     def remove_package(self, repo_name: str, package_name: str) -> bool:
