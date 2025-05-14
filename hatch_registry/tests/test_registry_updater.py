@@ -47,10 +47,10 @@ class RegistryUpdaterTests(unittest.TestCase):
         with open(self.registry_path, 'w') as f:
             json.dump(test_registry, f, indent=2)
             
-        # Path to Hatch-Dev packages
+        # Path to Hatching-Dev packages
         self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatching-Dev"
         self.assertTrue(self.hatch_dev_path.exists(), 
-                       f"Hatch-Dev directory not found at {self.hatch_dev_path}")
+                       f"Hatching-Dev directory not found at {self.hatch_dev_path}")
         
         # Initialize registry updater
         self.registry_updater = RegistryUpdater(self.registry_path)
@@ -225,17 +225,17 @@ class RegistryIntegrationTests(unittest.TestCase):
         self.temp_dir = tempfile.mkdtemp()
         self.registry_path = Path(self.temp_dir) / "integration_registry.json"
                 
-        # Path to Hatch-Dev packages
-        self.hatch_dev_path = Path(__file__).parent.parent / "Hatch-Dev"
+        # Path to Hatching-Dev packages
+        self.hatch_dev_path = Path(__file__).parent.parent.parent.parent / "Hatching-Dev"
         self.assertTrue(self.hatch_dev_path.exists(), 
-                        f"Hatch-Dev directory not found at {self.hatch_dev_path}")
+                        f"Hatching-Dev directory not found at {self.hatch_dev_path}")
         
         # Initialize registry updater
         self.registry_updater = RegistryUpdater(self.registry_path)
         
         # Add a test repository
-        self.repo_name = "hatch-dev"
-        self.registry_updater.core.add_repository(self.repo_name, "file:///hatch-dev")
+        self.repo_name = "hatching-dev"
+        self.registry_updater.core.add_repository(self.repo_name, "file:///hatching-dev")
     
     def tearDown(self):
         """Clean up test environment after each test."""
