@@ -20,6 +20,8 @@ def main():
     add_pkg_parser = subparsers.add_parser('add-package', help='Performs validation and add a new package')
     add_pkg_parser.add_argument('--repository-name', required=True, help='Repository name')
     add_pkg_parser.add_argument('--package-dir', required=True, help='Path to package directory')
+    add_pkg_parser.add_argument('--author-github-id', help='GitHub ID of the package author')
+    add_pkg_parser.add_argument('--author-email', help='Email of the package author')
     
     # List repositories command
     list_repos_parser = subparsers.add_parser('list-repositories', help='List all repositories')
@@ -67,10 +69,27 @@ def main():
         
         if args.command == 'add-repository':
             success = updater.core.add_repository(args.name, args.url)
-            sys.exit(0 if success else 1)
-            
+            if not success:
+                print(f"Failed to add repository {args.name}")
+                sys.exit(1)
+            sys.exit(0)
+        
         elif args.command == 'add-package':
-            success = updater.validate_and_add_package(args.repository_name, Path(args.package_dir))
+            # Prepare author information if provided
+            author = None
+            if args.author_github_id or args.author_email:
+                author = {}
+                if args.author_github_id:
+                    author["GitHubID"] = args.author_github_id
+                if args.author_email:
+                    author["email"] = args.author_email
+            
+            success, _ = updater.validate_and_add_package(
+                args.repository_name, 
+                Path(args.package_dir),
+                author=author
+            )
+            
             if not success:
                 print(f"Failed to add package to repository {args.repository_name}")
                 sys.exit(1)
@@ -117,21 +136,11 @@ def main():
             sys.exit(0)
             
         elif args.command == 'validate-package':
-            is_valid, results = updater.validate_package(args.repository_name, Path(args.package_dir))
-            if is_valid:
-                print(f"Package validation successful: {args.package_dir}")
-                sys.exit(0)
-            else:
+            is_valid, _ = updater.validate_package(args.repository_name, Path(args.package_dir))
+            if not is_valid:
                 print(f"Package validation failed: {args.package_dir}")
-                if "errors" in results:
-                    print("Errors:")
-                    for error in results["errors"]:
-                        print(f"  - {error}")
-                if "dependency_errors" in results:
-                    print("Dependency Errors:")
-                    for error in results["dependency_errors"]:
-                        print(f"  - {error}")
                 sys.exit(1)
+            sys.exit(0)
     
     except Exception as e:
         logging.error(f"Command failed: {e}")

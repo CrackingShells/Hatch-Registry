@@ -1,7 +1,7 @@
 import datetime
 import logging
 from pathlib import Path
-from typing import Dict, Any, Tuple
+from typing import Dict, Any, Tuple, Optional
 
 # Import internal modules
 from .registry_core import RegistryCore
@@ -30,20 +30,23 @@ class RegistryUpdater:
         self.core = RegistryCore(registry_path)
         self.validator = RegistryValidator(self.core.registry_data)
     
-    def _add_new_package(self, repo_name: str, package_metadata: dict = None) -> bool:
+    def _add_new_package(self, repo_name: str, package_metadata: dict = None,
+                         author: Optional[Dict[str, str]] = None
+                         ) -> bool:
         """
         Add a new package to the registry.
         
         Args:
             repo_name: Repository name
             package_metadata: Metadata for the package
+            author: Optional[Dict[str, str]] = None
 
         Returns:
             bool: True if the package was added successfully
         """
         try:
             # Add the package to the registry
-            if not self.core.add_package(repo_name, package_metadata):
+            if not self.core.add_package(repo_name, package_metadata, author):
                 self.logger.error(f"Failed to add package {package_metadata['name']} to repository {repo_name}")
                 return False
 
@@ -54,7 +57,9 @@ class RegistryUpdater:
             self.logger.error(f"Error adding package: {e}")
             return False
 
-    def _add_new_package_version(self, repo_name: str, package_metadata: dict) -> bool:
+    def _add_new_package_version(self, repo_name: str, package_metadata: dict,
+                                 author: Optional[Dict[str, str]] = None,
+                                 ) -> bool:
         """
         Private method to update the registry with a new package version.
         Called by validate_and_add_package after validation.
@@ -62,13 +67,14 @@ class RegistryUpdater:
         Args:
             repo_name: Repository name
             package_metadata: Package metadata for the new version
-            
+            author: Author information for the new version
+
         Returns:
             bool: True if the registry was updated successfully
         """
         try:                
             # Update the registry
-            if not self.core.add_new_package_version(repo_name, package_metadata):
+            if not self.core.add_new_package_version(repo_name, package_metadata, author):
                 self.logger.error(f"Failed to update registry for package {package_metadata['name']} in repository {repo_name}")
                 return False
             
@@ -151,7 +157,9 @@ class RegistryUpdater:
             self.logger.error(f"Error validating package: {e}")
             return False, {"valid": False, "errors": [f"Error validating package: {str(e)}"]}
     
-    def validate_and_add_package(self, repo_name: str, package_dir: Path, metadata_path: str = "hatch_metadata.json") -> Tuple[bool, dict]:
+    def validate_and_add_package(self, repo_name: str, package_dir: Path, metadata_path: str = "hatch_metadata.json",
+                                 author: Optional[Dict[str, str]] = None,
+                                 ) -> Tuple[bool, dict]:
         """
         Validate a package and add it to the registry if validation succeeds.
         This is a convenience method that combines validation and addition.
@@ -160,7 +168,8 @@ class RegistryUpdater:
             repo_name: Repository name
             package_dir: Path to the package directory
             metadata_path: Path to the metadata file
-            
+            author: Author information for the package. 
+
         Returns:
             Tuple[bool, dict]: (success, results or error information)
         """
@@ -175,12 +184,14 @@ class RegistryUpdater:
         if is_new_package:            # Add as a new package
             added = self._add_new_package(
                 repo_name,
-                package_metadata=validation_results["metadata"]
+                package_metadata=validation_results["metadata"],
+                author=author
             )
-        else:            
+        else:
             added = self._add_new_package_version(
-                repo_name, 
-                package_metadata=validation_results["metadata"]
+                repo_name,
+                package_metadata=validation_results["metadata"],
+                author=author
             )
-        
+
         return added, validation_results
