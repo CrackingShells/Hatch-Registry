@@ -1,0 +1,58 @@
+name: Release package registry
+
+on:
+  workflow_dispatch:
+    inputs:
+      force:
+        description: 'Force release even if no changes detected'
+        type: boolean
+        required: true
+        default: false
+  schedule:
+    # every day at 00:00 UTC
+    - cron: '0 0 * * *'
+
+jobs:
+    detect-registry-changes:
+      runs-on: ubuntu-latest
+      outputs:
+        changes: ${{ steps.detect-changed-paths.outputs.changes }}
+      steps:
+        - name: Checkout repository
+          uses: actions/checkout@v4
+
+        - name: Detect changed package directories
+          id: detect-changed-paths
+          uses: dorny/paths-filter@v2
+          with:
+            filters: |
+              changes:
+                - modified: './data/hatch_packages_registry.json'
+
+    release-registry:
+      needs: detect-registry-changes
+      if: ${{ needs.detect-registry-changes.outputs.changes == 'true' }} || ${{ github.event.inputs.force == true }}
+      runs-on: ubuntu-latest
+      steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Get todays date
+        id: get-date
+        run: |
+          echo "date=$(date +'%Y-%m-%d')" >> $GITHUB_OUTPUT
+          echo "date_time=$(date +'%H:%M:%S')" >> $GITHUB_OUTPUT
+
+      - name: Release package registry
+        id: release-registry
+        uses: softprops/action-gh-release@v2
+        with:
+          body: |
+            ## Registry Release
+            This release includes the latest changes to the package registry.
+            - Release date: ${{ steps.get-date.outputs.date }}
+            - Release time: ${{ steps.get-date.outputs.date_time }}
+            - Manual trigger: ${{ github.event.inputs.force }}
+          name: hatch-registry-${{ steps.get-date.outputs.date }}
+          files: ./data/hatch_packages_registry.json
+          make_latest: "true"
