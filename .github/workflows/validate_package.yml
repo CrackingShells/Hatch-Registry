@@ -73,9 +73,7 @@ jobs:
             const prNumber = ${{ github.event.client_payload.pr_number }};
             
             let commentBody;
-            if (validation_result === 'success') {
-              commentBody = `## ✅ Package Validation Success\n\nYour package has been successfully validated! It is now ready for review.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`;
-              
+            if (validation_result === 'success') {              
               // Add success label
               await github.rest.issues.addLabels({
                 owner,
@@ -83,8 +81,14 @@ jobs:
                 issue_number: prNumber,
                 labels: ['validation-passed', 'ready-for-review']
               });
+
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `## ✅ Package Validation Success\n\nYour package has been successfully validated! It is now ready for review.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`
+              });
             } else {
-              commentBody = `## ❌ Package Validation Failed\n\nYour package did not pass validation. Please see the log below for details and make the necessary changes.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`;
               
               // Add failure label
               await github.rest.issues.addLabels({
@@ -93,11 +97,30 @@ jobs:
                 issue_number: prNumber,
                 labels: ['validation-failed']
               });
+              
+              await github.rest.issues.createComment({
+                owner,
+                repo,
+                issue_number: prNumber,
+                body: `## ❌ Package Validation Failed\n\nYour package did not pass validation. Please see the log below for details and make the necessary changes.\n\n<details><summary>Validation Log</summary>\n\n\`\`\`\n${validationLog}\n\`\`\`\n</details>`
+              });
+
+              core.setFailed('Package validation failed. Please check the log for details.');
+            }
+
+      - name: Trigger Release
+        if: ${{ steps.validation.outputs.validation_result == 'success' }}
+        uses: peter-evans/repository-dispatch@v3
+        with:
+          token: ${{ steps.generate-token.outputs.token }}
+          repository: ${{ github.event.client_payload.repository }}
+          event-type: release-package
+          client-payload: |- 
+            {
+              "pr_number": "${{ github.event.client_payload.pr_number }}",
+              "artifact_name": "${{ github.event.client_payload.artifact_name }}",
+              "package_name": "${{ github.event.client_payload.package_name }}",
+              "workflow_id": "${{ github.event.client_payload.workflow_id }}",
+              "run_id": "${{ github.event.client_payload.run_id }}"
             }
             
-            await github.rest.issues.createComment({
-              owner,
-              repo,
-              issue_number: prNumber,
-              body: commentBody
-            });

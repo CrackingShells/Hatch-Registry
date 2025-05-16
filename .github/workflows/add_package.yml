@@ -30,33 +30,28 @@ jobs:
           pip install .
       
       - name: Download package release
-        run: |
-          REPO="${{ github.event.client_payload.repository }}"
-          TAG="${{ github.event.client_payload.release_tag }}"
-          PACKAGE="${{ github.event.client_payload.package_name }}"
-          VERSION="${{ github.event.client_payload.version }}"
-          
-          # Download the release asset
-          curl -L -o ${PACKAGE}-${VERSION}.zip \
-            -H "Authorization: token ${{ steps.generate-token.outputs.token }}" \
-            https://api.github.com/repos/${REPO}/releases/tags/${TAG}/assets
-      
+        uses: dawidd6/action-download-artifact@v9
+        with:
+          github_token: ${{ steps.generate-token.outputs.token }}
+          workflow: ${{ github.event.client_payload.workflow_id }}
+          run_id: ${{ github.event.client_payload.run_id }}
+          name: ${{ github.event.client_payload.artifact_name }}
+          repo: ${{ github.event.client_payload.repository }}
+          path: downloaded-package
+
       - name: Add package to registry
         run: |
-          PACKAGE="${{ github.event.client_payload.package_name }}"
-          VERSION="${{ github.event.client_payload.version }}"
-          REPO="${{ github.event.client_payload.repository }}"
-          
+          REPO=$(basename ${{ github.event.client_payload.repository }})
+
           hatch-registry add-package \
-            --name ${PACKAGE} \
-            --version ${VERSION} \
-            --source-repo ${REPO} \
-            --package-file ${PACKAGE}-${VERSION}.zip
+            --repository-name $REPO \
+            --package-dir ./downloaded-package \
+            --author-github-id ${{ github.event.client_payload.author.GitHubID }} \
+            --author-email ${{ github.event.client_payload.author.email }}
       
       - name: Commit changes to registry
-        run: |
-          git config --local user.email "action@github.com"
-          git config --local user.name "GitHub Action"
-          git add registry.json
-          git commit -m "Add package ${{ github.event.client_payload.package_name }} v${{ github.event.client_payload.version }}"
-          git push
+        uses: EndBug/add-and-commit@v9
+        with:
+          github_token: ${{ steps.generate-token.outputs.token }}
+          add: "./data/hatch_packages_registry.json"
+          message: "[Add] Package ${{ github.event.client_payload.package_name }} v${{ github.event.client_payload.version }}"
