@@ -54,5 +54,6 @@ jobs:
             - Release time: ${{ steps.get-date.outputs.date_time }}
             - Manual trigger: ${{ github.event.inputs.force }}
           name: hatch-registry-${{ steps.get-date.outputs.date }}
+          tag_name: ${{ steps.get-date.outputs.date }}
           files: ./data/hatch_packages_registry.json
           make_latest: "true"
