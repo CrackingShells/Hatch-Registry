@@ -126,7 +126,6 @@ def main():
                 
             print(f"Package: {pkg['name']}")
             print(f"Description: {pkg.get('description', 'No description')}")
-            print(f"Category: {pkg.get('category', 'Uncategorized')}")
             print(f"Tags: {', '.join(pkg.get('tags', []))}")
             print(f"Latest version: {pkg.get('latest_version', 'No version')}")
             print(f"Versions ({len(pkg.get('versions', []))}):")
