@@ -45,7 +45,7 @@ jobs:
 
       - name: Release package registry
         id: release-registry
-        uses: softprops/action-gh-release@v2
+        uses: softprops/action-gh-release@v2.2.2
         with:
           body: |
             ## Registry Release
