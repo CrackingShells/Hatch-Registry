@@ -1,6 +1,6 @@
 {
   "registry_schema_version": "1.1.0",
-  "last_updated": "2025-05-28T03:54:37.911974",
+  "last_updated": "2025-07-09T05:04:33.615672",
   "artifact_base_url": "https://artifacts.crackingshells.org/packages",
   "repositories": [
     {
@@ -36,9 +36,19 @@
               "version": "1.0.2",
               "added_date": "2025-05-28T03:54:37.911777",
               "base_version": "1.0.1"
+            },
+            {
+              "author": {
+                "GitHubID": "LittleCoinCoin",
+                "email": "LittleCoinCoin@not-provided.com"
+              },
+              "release_uri": "https://github.com/CrackingShells/Hatching-Dev/releases/download/base_pkg_1-v1.0.3/base_pkg_1-v1.0.3.zip",
+              "version": "1.0.3",
+              "added_date": "2025-07-09T05:04:33.615466",
+              "base_version": "1.0.2"
             }
           ],
-          "latest_version": "1.0.2"
+          "latest_version": "1.0.3"
         }
       ],
       "last_indexed": "2025-05-12T06:43:13.231536"
@@ -46,7 +56,7 @@
   ],
   "stats": {
     "total_packages": 1,
-    "total_versions": 2,
+    "total_versions": 3,
     "total_artifacts": 0
   }
 }
